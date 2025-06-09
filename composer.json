@@ -1,0 +1,74 @@
+{
+    "name": "yangweijie/think-runtime",
+    "description": "高性能环境下运行的ThinkPHP Runtime扩展包，支持Swoole、RoadRunner、FrankenPHP等多种运行时",
+    "type": "library",
+    "keywords": [
+        "thinkphp",
+        "runtime",
+        "swoole",
+        "roadrunner",
+        "frankenphp",
+        "high-performance"
+    ],
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "yangweijie\\thinkRuntime\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "yangweijie\\thinkRuntime\\Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "jay",
+            "email": "917647288@qq.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=8.0",
+        "nyholm/psr7": "^1.3",
+        "nyholm/psr7-server": "^1.0",
+        "psr/http-message": "^1.0|^2.0",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0",
+        "topthink/framework": "^8.0",
+        "topthink/think-orm": "3.*"
+    },
+    "require-dev": {
+        "pestphp/pest": "^1.23",
+        "phpunit/phpunit": "^9.6|^10.0",
+        "swoole/ide-helper": "^5.0",
+        "spiral/roadrunner": "^2.0|^3.0",
+        "spiral/roadrunner-http": "^2.0|^3.0"
+    },
+    "suggest": {
+        "ext-swoole": "Required for Swoole runtime adapter",
+        "dunglas/frankenphp": "Required for FrankenPHP runtime adapter (modern PHP app server)",
+        "react/http": "Required for ReactPHP runtime adapter (event-driven async HTTP server)",
+        "react/socket": "Required for ReactPHP runtime adapter (async socket server)",
+        "cloudtay/ripple": "Required for Ripple runtime adapter (high-performance coroutine HTTP server)",
+        "spiral/roadrunner": "Required for RoadRunner runtime adapter"
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "think": {
+            "services": [
+                "yangweijie\\thinkRuntime\\service\\RuntimeServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test-coverage": "pest --coverage"
+    }
+}
