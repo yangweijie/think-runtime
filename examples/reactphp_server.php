@@ -12,7 +12,7 @@ use think\App;
 use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 // 引入自动加载
-require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 // 创建应用实例
 $app = new App();

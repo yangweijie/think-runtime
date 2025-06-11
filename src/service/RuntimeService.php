@@ -13,7 +13,7 @@ use yangweijie\thinkRuntime\runtime\RuntimeManager;
  * 运行时服务提供者
  * 负责注册运行时相关服务到ThinkPHP容器
  */
-class RuntimeServiceProvider extends Service
+class RuntimeService extends Service
 {
     /**
      * 注册服务
@@ -48,7 +48,8 @@ class RuntimeServiceProvider extends Service
     {
         // 注册运行时命令
         $this->registerCommands();
-        
+
+
         // 应用全局配置
         $this->applyGlobalConfig();
     }

@@ -237,10 +237,9 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
         // 设置连接限制
         if ($config['max_connections'] > 0) {
             $this->socketServer->on('connection', function ($connection) use ($config) {
-                // 设置超时
-                if ($config['timeout'] > 0) {
-                    $connection->setTimeout($config['timeout']);
-                }
+                // ReactPHP Connection 不支持 setTimeout 方法
+                // 超时控制应该在 Connector 层面或通过事件循环定时器实现
+                // 这里可以添加其他连接相关的配置
             });
         }
     }

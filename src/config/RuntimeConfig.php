@@ -1,9 +1,13 @@
 <?php
 
 declare(strict_types=1);
-
 namespace yangweijie\thinkRuntime\config;
-
+if(!extension_loaded('swoole')){
+    if(!defined('SWOOLE_PROCESS'))
+        define('SWOOLE_PROCESS', 2);
+    if(!defined('SWOOLE_SOCK_TCP'))
+        define('SWOOLE_SOCK_TCP', 1);
+}
 /**
  * 运行时配置类
  * 管理不同运行时环境的配置
@@ -34,8 +38,8 @@ class RuntimeConfig
             'swoole' => [
                 'host' => '0.0.0.0',
                 'port' => 9501,
-                'mode' => SWOOLE_PROCESS,
-                'sock_type' => SWOOLE_SOCK_TCP,
+                'mode' => SWOOLE_PROCESS??2,
+                'sock_type' => SWOOLE_SOCK_TCP??1,
                 'settings' => [
                     'worker_num' => 4,
                     'task_worker_num' => 2,

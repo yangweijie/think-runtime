@@ -113,9 +113,11 @@ class FpmAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function isSupported(): bool
     {
-        return php_sapi_name() === 'fpm-fcgi' ||
-               php_sapi_name() === 'cgi-fcgi' ||
-               isset($_SERVER['REQUEST_METHOD']);
+        return
+                php_sapi_name() === 'cli' ||
+                php_sapi_name() === 'fpm-fcgi' ||
+                php_sapi_name() === 'cgi-fcgi' ||
+                isset($_SERVER['REQUEST_METHOD']);
     }
 
     /**

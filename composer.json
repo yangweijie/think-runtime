@@ -35,6 +35,8 @@
         "psr/http-message": "^1.0|^2.0",
         "psr/http-server-handler": "^1.0",
         "psr/http-server-middleware": "^1.0",
+        "react/http": "3.x-dev",
+        "react/socket": "1.x-dev",
         "topthink/framework": "^8.0",
         "topthink/think-orm": "3.*"
     },
@@ -62,8 +64,11 @@
     },
     "extra": {
         "think": {
+            "config": {
+                "runtime": "config/runtime.php"
+            },
             "services": [
-                "yangweijie\\thinkRuntime\\service\\RuntimeServiceProvider"
+                "yangweijie\\thinkRuntime\\service\\RuntimeService"
             ]
         }
     },
