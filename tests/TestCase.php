@@ -142,9 +142,9 @@ abstract class TestCase extends BaseTestCase
                     'trace' => false,
                 ],
                 'runtime' => [
-                    'default' => 'fpm',
+                    'default' => 'swoole',
                     'runtimes' => [
-                        'fpm' => [
+                        'swoole' => [
                             'auto_start' => false,
                         ],
                     ],
@@ -339,7 +339,7 @@ abstract class TestCase extends BaseTestCase
     {
         $defaultConfig = [
             'default' => 'auto',
-            'auto_detect_order' => ['swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner', 'fpm'],
+            'auto_detect_order' => ['swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner'],
             'runtimes' => [
                 'swoole' => [
                     'host' => '0.0.0.0',
@@ -364,9 +364,6 @@ abstract class TestCase extends BaseTestCase
                 'roadrunner' => [
                     'workers' => 4,
                     'max_jobs' => 1000,
-                ],
-                'fpm' => [
-                    'auto_start' => false,
                 ],
             ],
         ];

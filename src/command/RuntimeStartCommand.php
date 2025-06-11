@@ -1,226 +1,161 @@
 <?php
 
-declare(strict_types=1);
+namespace think\runtime\command;
 
-namespace yangweijie\thinkRuntime\command;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+use think\runtime\RuntimeManager;
 
-use think\console\Command;
-use think\console\Input;
-use think\console\Output;
-use think\console\input\Argument;
-use think\console\input\Option;
-use yangweijie\thinkRuntime\runtime\RuntimeManager;
-
-/**
- * 运行时启动命令
- * 用于启动指定的运行时服务器
- */
 class RuntimeStartCommand extends Command
 {
-    /**
-     * 配置命令
-     *
-     * @return void
-     */
-    protected function configure(): void
+    protected function configure()
     {
-        $this->setName('runtime:start')
-            ->setDescription('Start runtime server')
-            ->addArgument('runtime', Argument::OPTIONAL, 'Runtime name (swoole, frankenphp, reactphp, ripple, roadrunner, fpm)', 'auto')
-            ->addOption('host', 'H', Option::VALUE_OPTIONAL, 'Server host', '0.0.0.0')
-            ->addOption('port', 'p', Option::VALUE_OPTIONAL, 'Server port', 9501)
-            ->addOption('daemon', 'd', Option::VALUE_NONE, 'Run as daemon')
-            ->addOption('workers', 'w', Option::VALUE_OPTIONAL, 'Number of workers', 4);
+        $this
+            ->setName('runtime:start')
+            ->setDescription('Start the runtime server')
+            ->addArgument('runtime', InputArgument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, ripple, roadrunner)')
+            ->addOption('host', null, InputOption::VALUE_OPTIONAL, 'The host to listen on')
+            ->addOption('port', null, InputOption::VALUE_OPTIONAL, 'The port to listen on')
+            ->addOption('workers', null, InputOption::VALUE_OPTIONAL, 'The number of worker processes')
+            ->addOption('debug', null, InputOption::VALUE_NONE, 'Enable debug mode')
+            ->addOption('daemon', null, InputOption::VALUE_NONE, 'Run the server in daemon mode');
     }
 
-    /**
-     * 执行命令
-     *
-     * @param Input $input 输入对象
-     * @param Output $output 输出对象
-     * @return int
-     */
-    protected function execute(Input $input, Output $output): int
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $runtimeName = $input->getArgument('runtime');
+        $runtime = $input->getArgument('runtime');
+        $host = $input->getOption('host');
+        $port = $input->getOption('port');
+        $workers = $input->getOption('workers');
+        $debug = $input->getOption('debug');
+        $daemon = $input->getOption('daemon');
 
-        /** @var RuntimeManager $manager */
-        $manager = $this->app->make('runtime.manager');
-
-        try {
-            // 检测运行时
-            if ($runtimeName === 'auto') {
-                $runtimeName = $manager->detectRuntime();
-                $output->writeln("<info>Auto-detected runtime: {$runtimeName}</info>");
-            }
-
-            // 检查运行时是否可用
-            if (!$manager->isRuntimeAvailable($runtimeName)) {
-                $output->writeln("<error>Runtime '{$runtimeName}' is not available</error>");
-                return 1;
-            }
-
-            // 构建启动选项
-            $options = $this->buildStartOptions($input, $runtimeName);
-
-            $output->writeln("<info>Starting {$runtimeName} runtime server...</info>");
-            $this->displayStartupInfo($output, $runtimeName, $options);
-
-            // 启动运行时
-            $manager->start($runtimeName, $options);
-
-            return 0;
-
-        } catch (\Throwable $e) {
-            $output->writeln("<error>Failed to start runtime: {$e->getMessage()}</error>");
-            return 1;
-        }
-    }
-
-    /**
-     * 构建启动选项
-     *
-     * @param Input $input 输入对象
-     * @param string $runtimeName 运行时名称
-     * @return array
-     */
-    protected function buildStartOptions(Input $input, string $runtimeName): array
-    {
         $options = [];
 
-        switch ($runtimeName) {
-            case 'swoole':
-                $options = [
-                    'host' => $input->getOption('host'),
-                    'port' => (int) $input->getOption('port'),
-                    'settings' => [
-                        'worker_num' => (int) $input->getOption('workers'),
-                        'daemonize' => $input->getOption('daemon') ? 1 : 0,
-                    ],
-                ];
-                break;
+        if ($host) {
+            $options['host'] = $host;
+        }
 
-            case 'frankenphp':
-                $options = [
-                    'listen' => ':' . $input->getOption('port'),
-                    'worker_num' => (int) $input->getOption('workers'),
-                    'debug' => $input->getOption('daemon') ? false : true,
-                ];
-                break;
+        if ($port) {
+            $options['port'] = $port;
+        }
 
-            case 'reactphp':
-                $options = [
-                    'host' => $input->getOption('host'),
-                    'port' => (int) $input->getOption('port'),
-                    'max_connections' => 1000,
-                    'debug' => $input->getOption('daemon') ? false : true,
-                ];
-                break;
+        if ($workers) {
+            $options['worker_num'] = $workers;
+        }
 
-            case 'ripple':
-                $options = [
-                    'host' => $input->getOption('host'),
-                    'port' => (int) $input->getOption('port'),
-                    'worker_num' => (int) $input->getOption('workers'),
-                    'debug' => $input->getOption('daemon') ? false : true,
-                    'enable_fiber' => true,
-                ];
-                break;
+        if ($debug) {
+            $options['debug'] = true;
+        }
 
-            case 'roadrunner':
-                // RoadRunner配置通过.rr.yaml文件管理
-                break;
+        if ($daemon) {
+            $options['daemon'] = true;
+        }
 
-            case 'fpm':
-                $options = [
-                    'auto_start' => true,
-                ];
-                break;
+        $runtimeManager = new RuntimeManager();
+
+        if ($runtime) {
+            $runtimeManager->setRuntime($runtime);
+        }
+
+        $options = $this->buildStartOptions($runtime, $options);
+
+        $runtimeManager->start($options);
+
+        $this->displayStartupInfo($output, $runtimeManager, $options);
+
+        return Command::SUCCESS;
+    }
+
+    protected function buildStartOptions(?string $runtime, array $options): array
+    {
+        if ($runtime === 'frankenphp') {
+            if (isset($options['host']) && isset($options['port'])) {
+                $options['listen'] = $options['host'] . ':' . $options['port'];
+                unset($options['host'], $options['port']);
+            }
+
+            if (isset($options['worker_num'])) {
+                $options['worker_num'] = (int) $options['worker_num'];
+            }
+
+            if (isset($options['debug'])) {
+                $options['debug'] = true;
+            }
+        } elseif ($runtime === 'reactphp') {
+            if (isset($options['worker_num'])) {
+                unset($options['worker_num']);
+            }
+
+            if (isset($options['debug'])) {
+                $options['debug'] = true;
+            }
+        } elseif ($runtime === 'ripple') {
+            if (isset($options['worker_num'])) {
+                $options['worker_num'] = (int) $options['worker_num'];
+            }
+
+            if (isset($options['debug'])) {
+                $options['debug'] = true;
+            }
+        } elseif ($runtime === 'roadrunner') {
+            if (isset($options['host']) || isset($options['port'])) {
+                unset($options['host'], $options['port']);
+            }
+
+            if (isset($options['worker_num'])) {
+                unset($options['worker_num']);
+            }
+
+            if (isset($options['debug'])) {
+                $options['debug'] = true;
+            }
         }
 
         return $options;
     }
 
-    /**
-     * 显示启动信息
-     *
-     * @param Output $output 输出对象
-     * @param string $runtimeName 运行时名称
-     * @param array $options 启动选项
-     * @return void
-     */
-    protected function displayStartupInfo(Output $output, string $runtimeName, array $options): void
+    protected function displayStartupInfo(OutputInterface $output, RuntimeManager $runtimeManager, array $options): void
     {
+        $runtime = $runtimeManager->getRuntimeInfo();
+        $runtimeName = $runtime['name'];
+
+        $output->writeln('<info>ThinkPHP Runtime Server started!</info>');
         $output->writeln('');
-        $output->writeln('<comment>Runtime Information:</comment>');
-        $output->writeln("  Runtime: {$runtimeName}");
 
-        switch ($runtimeName) {
-            case 'swoole':
-                $host = $options['host'] ?? '0.0.0.0';
-                $port = $options['port'] ?? 9501;
-                $workers = $options['settings']['worker_num'] ?? 4;
-                $daemon = $options['settings']['daemonize'] ?? 0;
-
-                $output->writeln("  Host: {$host}");
-                $output->writeln("  Port: {$port}");
-                $output->writeln("  Workers: {$workers}");
-                $output->writeln("  Daemon: " . ($daemon ? 'Yes' : 'No'));
-                $output->writeln("  URL: http://{$host}:{$port}");
-                break;
-
-            case 'frankenphp':
-                $listen = $options['listen'] ?? ':8080';
-                $workers = $options['worker_num'] ?? 4;
-                $debug = $options['debug'] ?? false;
-
-                $output->writeln("  Listen: {$listen}");
-                $output->writeln("  Workers: {$workers}");
-                $output->writeln("  Debug: " . ($debug ? 'Yes' : 'No'));
-                $output->writeln("  Features: HTTP/2, Auto HTTPS");
-                break;
-
-            case 'reactphp':
-                $host = $options['host'] ?? '0.0.0.0';
-                $port = $options['port'] ?? 8080;
-                $maxConnections = $options['max_connections'] ?? 1000;
-                $debug = $options['debug'] ?? false;
-
-                $output->writeln("  Host: {$host}");
-                $output->writeln("  Port: {$port}");
-                $output->writeln("  Max Connections: {$maxConnections}");
-                $output->writeln("  Debug: " . ($debug ? 'Yes' : 'No'));
-                $output->writeln("  Features: Event-driven, Async I/O");
-                break;
-
-            case 'ripple':
-                $host = $options['host'] ?? '0.0.0.0';
-                $port = $options['port'] ?? 8080;
-                $workers = $options['worker_num'] ?? 4;
-                $fiber = $options['enable_fiber'] ?? true;
-                $debug = $options['debug'] ?? false;
-
-                $output->writeln("  Host: {$host}");
-                $output->writeln("  Port: {$port}");
-                $output->writeln("  Workers: {$workers}");
-                $output->writeln("  Fiber Support: " . ($fiber ? 'Yes' : 'No'));
-                $output->writeln("  Debug: " . ($debug ? 'Yes' : 'No'));
-                $output->writeln("  Features: Coroutines, High Performance");
-                break;
-
-            case 'roadrunner':
-                $output->writeln("  Mode: RoadRunner Worker");
-                $output->writeln("  Config: .rr.yaml");
-                break;
-
-            case 'fpm':
-                $output->writeln("  Mode: PHP-FPM");
-                $output->writeln("  Note: Make sure your web server is configured properly");
-                break;
+        if ($runtimeName === 'swoole') {
+            $output->writeln('<comment>Mode: Swoole</comment>');
+            $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+            $output->writeln('<comment>Port: ' . ($options['port'] ?? '9501') . '</comment>');
+            $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
+            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+            $output->writeln('<comment>Daemon: ' . (($options['daemon'] ?? false) ? 'true' : 'false') . '</comment>');
+        } elseif ($runtimeName === 'frankenphp') {
+            $output->writeln('<comment>Mode: FrankenPHP</comment>');
+            $output->writeln('<comment>Listen: ' . ($options['listen'] ?? ':8080') . '</comment>');
+            $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
+            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+        } elseif ($runtimeName === 'reactphp') {
+            $output->writeln('<comment>Mode: ReactPHP</comment>');
+            $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+            $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+        } elseif ($runtimeName === 'ripple') {
+            $output->writeln('<comment>Mode: Ripple</comment>');
+            $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+            $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+            $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
+            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+        } elseif ($runtimeName === 'roadrunner') {
+            $output->writeln('<comment>Mode: RoadRunner</comment>');
+            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+            $output->writeln('<comment>Note: RoadRunner server must be started separately</comment>');
         }
 
         $output->writeln('');
-        $output->writeln('<comment>Press Ctrl+C to stop the server</comment>');
-        $output->writeln('');
+        $output->writeln('<info>Use Ctrl+C to stop the server</info>');
     }
 }

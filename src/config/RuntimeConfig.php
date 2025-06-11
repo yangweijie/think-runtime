@@ -30,7 +30,6 @@ class RuntimeConfig
             'reactphp',
             'ripple',
             'roadrunner',
-            'fpm',
         ],
 
         // 运行时配置
@@ -117,10 +116,6 @@ class RuntimeConfig
                 'debug' => false,
                 'max_jobs' => 0,
                 'memory_limit' => '128M',
-            ],
-            'fpm' => [
-                'auto_start' => true,
-                'handle_errors' => true,
             ],
         ],
 

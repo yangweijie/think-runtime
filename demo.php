@@ -75,7 +75,6 @@ $adapters = [
     'reactphp' => 'yangweijie\\thinkRuntime\\adapter\\ReactphpAdapter',
     'ripple' => 'yangweijie\\thinkRuntime\\adapter\\RippleAdapter',
     'roadrunner' => 'yangweijie\\thinkRuntime\\adapter\\RoadrunnerAdapter',
-    'fpm' => 'yangweijie\\thinkRuntime\\adapter\\FpmAdapter',
 ];
 
 foreach ($adapters as $name => $class) {

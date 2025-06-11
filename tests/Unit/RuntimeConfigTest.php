@@ -22,7 +22,7 @@ test('can get specific configuration value', function () {
 
     $autoDetectOrder = $config->get('auto_detect_order');
     expect($autoDetectOrder)->toBeArray()
-        ->and($autoDetectOrder)->toContain('swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner', 'fpm');
+        ->and($autoDetectOrder)->toContain('swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner');
 });
 
 test('can get nested configuration value', function () {
@@ -72,7 +72,7 @@ test('can get auto detect order', function () {
 
     $order = $config->getAutoDetectOrder();
     expect($order)->toBeArray()
-        ->and($order)->toContain('swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner', 'fpm');
+        ->and($order)->toContain('swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner');
 });
 
 test('can get global configuration', function () {

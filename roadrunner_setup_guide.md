@@ -126,7 +126,6 @@ return [
         'reactphp',
         'ripple',
         'roadrunner',  // 确保包含 roadrunner
-        'fpm',
     ],
     
     'runtimes' => [

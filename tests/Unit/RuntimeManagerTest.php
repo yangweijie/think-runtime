@@ -35,7 +35,7 @@ test('can detect best runtime', function () {
     $bestRuntime = reset($availableRuntimes); // 取第一个可用的运行时
 
     expect($bestRuntime)->toBeString();
-    expect($bestRuntime)->toBeIn(['swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner', 'fpm']);
+    expect($bestRuntime)->toBeIn(['swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner']);
 });
 
 test('can get runtime by name', function () {
@@ -43,10 +43,10 @@ test('can get runtime by name', function () {
     $this->createRuntimeConfig();
     $this->createRuntimeManager();
     
-    $runtime = $this->runtimeManager->getRuntime('fpm');
+    $runtime = $this->runtimeManager->getRuntime('swoole');
     
     expect($runtime)->not->toBeNull();
-    expect($runtime->getName())->toBe('fpm');
+    expect($runtime->getName())->toBe('swoole');
 });
 
 test('throws exception for invalid runtime', function () {
@@ -64,9 +64,9 @@ test('can start runtime with default config', function () {
     $this->createRuntimeConfig();
     $this->createRuntimeManager();
     
-    // 使用FPM作为测试，因为它总是可用
+    // 使用swoole作为测试
     expect(function () {
-        $this->runtimeManager->start('fpm');
+        $this->runtimeManager->start('swoole');
     })->not->toThrow(\Exception::class);
 });
 
@@ -81,7 +81,7 @@ test('can start runtime with custom config', function () {
     ];
     
     expect(function () use ($customConfig) {
-        $this->runtimeManager->start('fpm', $customConfig);
+        $this->runtimeManager->start('swoole', $customConfig);
     })->not->toThrow(\Exception::class);
 });
 
@@ -105,7 +105,7 @@ test('can stop runtime', function () {
     $this->createRuntimeManager();
     
     // 先启动
-    $this->runtimeManager->start('fpm');
+    $this->runtimeManager->start('swoole');
     
     // 然后停止
     expect(function () {
@@ -119,7 +119,7 @@ test('can restart runtime', function () {
     $this->createRuntimeManager();
     
     // 启动
-    $this->runtimeManager->start('fpm');
+    $this->runtimeManager->start('swoole');
     
     // 重启
     expect(function () {
@@ -144,12 +144,12 @@ test('can get current runtime name', function () {
     $this->createRuntimeManager();
 
     // 启动一个运行时
-    $this->runtimeManager->start('fpm');
+    $this->runtimeManager->start('swoole');
 
     // 模拟获取当前运行时 - 在测试环境中返回启动的运行时
-    $currentRuntime = 'fpm';
+    $currentRuntime = 'swoole';
 
-    expect($currentRuntime)->toBe('fpm');
+    expect($currentRuntime)->toBe('swoole');
 });
 
 test('auto detection follows priority order', function () {
@@ -185,14 +185,14 @@ test('can handle runtime switching', function () {
     $this->createRuntimeManager();
 
     // 启动第一个运行时
-    $this->runtimeManager->start('fpm');
-    $currentRuntime = 'fpm'; // 模拟当前运行时
-    expect($currentRuntime)->toBe('fpm');
+    $this->runtimeManager->start('swoole');
+    $currentRuntime = 'swoole'; // 模拟当前运行时
+    expect($currentRuntime)->toBe('swoole');
 
     // 切换到另一个运行时（如果可用）
     $availableRuntimes = $this->runtimeManager->getAvailableRuntimes();
     if (count($availableRuntimes) > 1) {
-        $otherRuntime = array_values(array_diff($availableRuntimes, ['fpm']))[0];
+        $otherRuntime = array_values(array_diff($availableRuntimes, ['swoole']))[0];
 
         expect(function () use ($otherRuntime) {
             $this->runtimeManager->start($otherRuntime);
@@ -217,7 +217,7 @@ test('validates runtime configuration', function () {
     
     // 应该能够处理无效配置而不崩溃
     expect(function () use ($invalidConfig) {
-        $this->runtimeManager->start('fpm', $invalidConfig);
+        $this->runtimeManager->start('swoole', $invalidConfig);
     })->not->toThrow(\TypeError::class);
 });
 
@@ -226,11 +226,11 @@ test('can get runtime statistics', function () {
     $this->createRuntimeConfig();
     $this->createRuntimeManager();
 
-    $this->runtimeManager->start('fpm');
+    $this->runtimeManager->start('swoole');
 
     // 模拟统计信息
     $stats = [
-        'runtime' => 'fpm',
+        'runtime' => 'swoole',
         'uptime' => time(),
         'memory_usage' => memory_get_usage(),
     ];

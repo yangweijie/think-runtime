@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 return [
     // 默认运行时
-    // 可选值: auto, swoole, roadrunner, fpm
+    // 可选值: auto, swoole, roadrunner
     'default' => 'auto',
 
     // 自动检测顺序
@@ -21,7 +21,6 @@ return [
         'reactphp',
         'ripple',
         'roadrunner',
-        'fpm',
     ],
 
     // 运行时配置
@@ -153,12 +152,6 @@ return [
             'debug' => env('RR_DEBUG', false),
             'max_jobs' => env('RR_MAX_JOBS', 0),
             'memory_limit' => env('RR_MEMORY_LIMIT', '128M'),
-        ],
-
-        // FPM配置
-        'fpm' => [
-            'auto_start' => true,
-            'handle_errors' => true,
         ],
     ],
 

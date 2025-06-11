@@ -20,7 +20,6 @@
 | ReactPHP | 事件驱动的异步HTTP服务器 | 92 | react/http, react/socket |
 | Ripple | 基于PHP Fiber的高性能协程HTTP服务器 | 91 | cloudtay/ripple, PHP 8.1+ |
 | RoadRunner | 基于Go的高性能应用服务器 | 90 | spiral/roadrunner |
-| FPM | 传统PHP-FPM环境 | 10 | 无 |
 
 ## 安装
 
@@ -37,7 +36,7 @@ composer require yangweijie/think-runtime
 ```php
 <?php
 return [
-    // 默认运行时 (auto, swoole, roadrunner, fpm)
+    // 默认运行时 (auto, swoole, roadrunner)
     'default' => 'auto',
 
     // 自动检测顺序
@@ -47,7 +46,6 @@ return [
         'reactphp',
         'ripple',
         'roadrunner',
-        'fpm',
     ],
 
     // 运行时配置
@@ -64,9 +62,6 @@ return [
         'roadrunner' => [
             'debug' => false,
             'max_jobs' => 0,
-        ],
-        'fpm' => [
-            'auto_start' => true,
         ],
     ],
 ];
@@ -413,7 +408,7 @@ php think runtime:start [runtime] [options]
 ```
 
 参数：
-- `runtime`: 运行时名称 (swoole, roadrunner, fpm, auto)
+- `runtime`: 运行时名称 (swoole, roadrunner, auto)
 
 选项：
 - `--host, -H`: 服务器地址 (默认: 0.0.0.0)
@@ -464,6 +459,6 @@ MIT License
 
 ### v1.0.0
 - 初始版本发布
-- 支持Swoole、RoadRunner、FPM运行时
+- 支持Swoole、RoadRunner运行时
 - 提供命令行工具
 - 完整的测试覆盖

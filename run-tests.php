@@ -91,7 +91,6 @@ echo "\n";
 // 检查适配器类
 echo "6. 检查适配器类\n";
 $adapterClasses = [
-    'yangweijie\\thinkRuntime\\adapter\\FpmAdapter',
     'yangweijie\\thinkRuntime\\adapter\\SwooleAdapter',
     'yangweijie\\thinkRuntime\\adapter\\FrankenphpAdapter',
     'yangweijie\\thinkRuntime\\adapter\\ReactphpAdapter',
@@ -118,7 +117,6 @@ $testFiles = [
     'tests/Unit/RuntimeConfigTest.php',
     'tests/Unit/RuntimeManagerTest.php',
     'tests/Unit/RuntimeInfoCommandTest.php',
-    'tests/Feature/FpmAdapterTest.php',
     'tests/Feature/SwooleAdapterTest.php',
     'tests/Feature/FrankenphpAdapterTest.php',
     'tests/Feature/ReactphpAdapterTest.php',
@@ -209,7 +207,6 @@ echo "最大执行时间: " . ini_get('max_execution_time') . "s\n";
 // 运行时支持检测
 echo "\n=== 运行时支持检测 ===\n";
 $runtimeSupport = [
-    'FPM' => true, // 总是支持
     'Swoole' => extension_loaded('swoole'),
     'FrankenPHP' => isset($_SERVER['FRANKENPHP_VERSION']),
     'ReactPHP' => class_exists('React\\EventLoop\\Loop'),
