@@ -263,17 +263,49 @@ $manager->registerAdapter('custom', CustomAdapter::class);
 ],
 ```
 
-需要在项目根目录创建`.rr.yaml`配置文件：
+## RoadRunner 运行指南
+
+### 1. 安装依赖
+
+```bash
+# 安装 RoadRunner PHP 包
+composer require spiral/roadrunner spiral/roadrunner-http
+
+# 安装 RoadRunner CLI 工具
+composer require spiral/roadrunner-cli --dev
+
+# 下载 RoadRunner 二进制文件
+./vendor/bin/rr get-binary
+
+# Windows 用户也可以从官方网站下载二进制文件
+# https://github.com/roadrunner-server/roadrunner/releases
+```
+
+### 2. 创建 RoadRunner 配置文件
+
+在项目根目录创建 `.rr.yaml` 配置文件：
 
 ```yaml
+# .rr.yaml
 version: "3"
+
+rpc:
+  listen: tcp://127.0.0.1:6001
 
 server:
   command: "php worker.php"
+  user: ""
+  group: ""
+  env:
+    - APP_ENV: production
+  relay: "pipes"
+  relay_timeout: "20s"
 
 http:
   address: 0.0.0.0:8080
-  middleware: ["static"]
+  middleware: ["static", "gzip"]
+  uploads:
+    forbid: [".php", ".exe", ".bat"]
   static:
     dir: "public"
     forbid: [".htaccess", ".php"]
@@ -281,6 +313,93 @@ http:
 logs:
   mode: development
   level: error
+  file_logger_options:
+    log_output: "./runtime/logs/roadrunner.log"
+    max_size: 10
+    max_age: 30
+    max_backups: 3
+    compress: true
+
+reload:
+  interval: "1s"
+  patterns: [".php"]
+  services:
+    http:
+      recursive: true
+      ignore: ["vendor"]
+      patterns: [".php"]
+      dirs: ["./"]
+```
+
+### 3. 创建 Worker 文件
+
+在项目根目录创建 `worker.php` 文件：
+
+```php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * RoadRunner Worker 入口文件
+ */
+
+use think\App;
+use yangweijie\thinkRuntime\runtime\RuntimeManager;
+
+// 引入自动加载
+require_once __DIR__ . '/vendor/autoload.php';
+
+// 创建应用实例
+$app = new App();
+
+// 初始化应用
+$app->initialize();
+
+// 获取运行时管理器
+$manager = $app->make('runtime.manager');
+
+// 启动RoadRunner运行时
+$manager->start('roadrunner');
+```
+
+### 4. 启动 RoadRunner 服务
+
+```bash
+# 使用 RoadRunner 二进制文件启动服务
+./roadrunner serve -c .rr.yaml
+
+# 或者使用 vendor 中的二进制文件
+./vendor/bin/rr serve -c .rr.yaml
+
+# Windows 用户可以使用
+rr.exe serve -c .rr.yaml
+```
+
+### 5. 管理 RoadRunner 服务
+
+```bash
+# 重载配置
+./vendor/bin/rr reset
+
+# 查看状态
+./vendor/bin/rr status
+
+# 查看工作进程
+./vendor/bin/rr workers
+```
+
+### 6. 性能优化
+
+可以通过调整 `.rr.yaml` 中的以下配置来优化性能：
+
+```yaml
+http:
+  pool:
+    num_workers: 4      # 工作进程数
+    max_jobs: 1000      # 每个进程最大任务数
+    allocate_timeout: 60s
+    destroy_timeout: 60s
 ```
 
 ## 命令行工具
