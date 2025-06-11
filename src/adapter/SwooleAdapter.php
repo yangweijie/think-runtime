@@ -59,6 +59,9 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
             'enable_coroutine' => 1,
             'max_coroutine' => 100000,
             'socket_buffer_size' => 2097152,
+            'max_wait_time' => 60,  // 最大等待时间
+            'reload_async' => true,  // 异步重载
+            'max_conn' => 1024,  // 最大连接数
         ],
     ];
 
@@ -111,8 +114,14 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
 
         $config = array_merge($this->defaultConfig, $this->config);
 
+        // 设置无限执行时间，因为Swoole服务器需要持续运行
+        set_time_limit(0);
+        ini_set('memory_limit', '512M');
+
         echo "Swoole HTTP Server starting...\n";
         echo "Listening on: {$config['host']}:{$config['port']}\n";
+        echo "Document root: " . ($config['settings']['document_root'] ?? 'not set') . "\n";
+        echo "Worker processes: " . ($config['settings']['worker_num'] ?? 4) . "\n";
 
         $this->server->start();
     }
@@ -200,6 +209,15 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     {
         $config = array_merge($this->defaultConfig, $this->config);
 
+        // 动态设置文档根目录（与boot方法保持一致）
+        if (!isset($config['settings']['document_root']) || $config['settings']['document_root'] === '/tmp') {
+            $config['settings']['document_root'] = getcwd() . '/public';
+            // 如果public目录不存在，使用当前目录
+            if (!is_dir($config['settings']['document_root'])) {
+                $config['settings']['document_root'] = getcwd();
+            }
+        }
+
         // 如果有嵌套的settings配置，将其合并到顶层
         if (isset($config['settings']) && is_array($config['settings'])) {
             $config = array_merge($config, $config['settings']);
@@ -259,8 +277,38 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function onWorkerStart(Server $server, int $workerId): void
     {
-        // 在工作进程中初始化应用
-        $this->app->initialize();
+        try {
+            // 设置进程标题
+            if (function_exists('cli_set_process_title')) {
+                cli_set_process_title("swoole-worker-{$workerId}");
+            }
+
+            // 设置工作进程的执行时间限制
+            set_time_limit(0);
+
+            // 判断是否为Task进程
+            $isTaskWorker = $workerId >= $server->setting['worker_num'];
+
+            if (!$isTaskWorker) {
+                // 只在HTTP Worker进程中初始化应用
+                if ($this->app && method_exists($this->app, 'initialize')) {
+                    // 简化的初始化，避免耗时操作
+                    try {
+                        $this->app->initialize();
+                    } catch (\Throwable $e) {
+                        echo "Worker #{$workerId} app initialization failed: " . $e->getMessage() . "\n";
+                        // 不抛出异常，让进程继续运行
+                    }
+                }
+                echo "HTTP Worker #{$workerId} started\n";
+            } else {
+                echo "Task Worker #{$workerId} started\n";
+            }
+
+        } catch (\Throwable $e) {
+            echo "Worker #{$workerId} start failed: " . $e->getMessage() . "\n";
+            // 不抛出异常，让进程继续运行
+        }
     }
 
     /**

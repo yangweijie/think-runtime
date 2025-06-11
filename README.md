@@ -23,8 +23,32 @@
 
 ## 安装
 
+### 要求
+
+- PHP >= 8.0
+- ThinkPHP >= 8.0
+
+### 安装步骤
+
 ```bash
+# 安装扩展包
 composer require yangweijie/think-runtime
+
+# 发布配置文件（可选）
+php think vendor:publish
+```
+
+### 故障排除
+
+如果安装后没有看到runtime命令，请尝试以下解决方案：
+
+```bash
+# 方案1: 重新发现服务
+php think service:discover
+php think clear
+
+# 方案2: 手动注册（运行项目根目录下的脚本）
+php vendor/yangweijie/think-runtime/test-thinkphp-commands.php
 ```
 
 ## 快速开始

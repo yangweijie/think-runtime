@@ -2,24 +2,23 @@
 
 namespace yangweijie\thinkRuntime\command;
 
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
+use think\console\Command;
+use think\console\Input;
+use think\console\Output;
 use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 class RuntimeInfoCommand extends Command
 {
     protected function configure()
     {
-        $this
-            ->setName('runtime:info')
-            ->setDescription('Show runtime information');
+        $this->setName('runtime:info')
+             ->setDescription('Show runtime information');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    protected function execute(Input $input, Output $output)
     {
         // 获取应用实例和配置
-        $app = app();
+        $app = $this->app;
         $config = $app->make('runtime.config');
         $runtimeManager = new RuntimeManager($app, $config);
         $runtimeInfo = $runtimeManager->getRuntimeInfo();
@@ -29,10 +28,10 @@ class RuntimeInfoCommand extends Command
         $this->displayAvailableRuntimes($output, $runtimeInfo['all_available']);
         $this->displayExtensionInfo($output);
 
-        return Command::SUCCESS;
+        return 0;
     }
 
-    protected function displaySystemInfo(OutputInterface $output): void
+    protected function displaySystemInfo(Output $output): void
     {
         $output->writeln('<info>System Information</info>');
         $output->writeln('PHP Version: ' . PHP_VERSION);
@@ -41,7 +40,7 @@ class RuntimeInfoCommand extends Command
         $output->writeln('');
     }
 
-    protected function displayRuntimeInfo(OutputInterface $output, array $runtimeInfo): void
+    protected function displayRuntimeInfo(Output $output, array $runtimeInfo): void
     {
         $output->writeln('<info>Current Runtime</info>');
         $output->writeln('Name: ' . $runtimeInfo['name']);
@@ -49,7 +48,7 @@ class RuntimeInfoCommand extends Command
         $output->writeln('');
     }
 
-    protected function displayAvailableRuntimes(OutputInterface $output, array $availableRuntimes): void
+    protected function displayAvailableRuntimes(Output $output, array $availableRuntimes): void
     {
         $output->writeln('<info>Available Runtimes</info>');
 
@@ -80,7 +79,7 @@ class RuntimeInfoCommand extends Command
         $output->writeln('');
     }
 
-    protected function displayExtensionInfo(OutputInterface $output): void
+    protected function displayExtensionInfo(Output $output): void
     {
         $output->writeln('<info>PHP Extensions</info>');
 

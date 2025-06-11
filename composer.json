@@ -72,6 +72,13 @@
     },
     "scripts": {
         "test": "pest",
-        "test-coverage": "pest --coverage"
+        "test-coverage": "pest --coverage",
+        "post-install-cmd": [
+            "@php -r \"echo '\\n=== ThinkPHP Runtime 安装完成 ===\\n';\"",
+            "@php -r \"echo '下一步: 复制配置文件到你的ThinkPHP项目\\n';\"",
+            "@php -r \"echo 'cp vendor/yangweijie/think-runtime/config/runtime.php config/\\n';\"",
+            "@php -r \"echo '然后运行: php think runtime:info\\n\\n';\""
+        ],
+        "check-install": "php install-check.php"
     }
 }

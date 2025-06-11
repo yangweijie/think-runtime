@@ -2,29 +2,28 @@
 
 namespace yangweijie\thinkRuntime\command;
 
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
+use think\console\Command;
+use think\console\Input;
+use think\console\input\Argument;
+use think\console\input\Option;
+use think\console\Output;
 use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 class RuntimeStartCommand extends Command
 {
     protected function configure()
     {
-        $this
-            ->setName('runtime:start')
-            ->setDescription('Start the runtime server')
-            ->addArgument('runtime', InputArgument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, ripple, roadrunner)')
-            ->addOption('host', null, InputOption::VALUE_OPTIONAL, 'The host to listen on')
-            ->addOption('port', null, InputOption::VALUE_OPTIONAL, 'The port to listen on')
-            ->addOption('workers', null, InputOption::VALUE_OPTIONAL, 'The number of worker processes')
-            ->addOption('debug', null, InputOption::VALUE_NONE, 'Enable debug mode')
-            ->addOption('daemon', null, InputOption::VALUE_NONE, 'Run the server in daemon mode');
+        $this->setName('runtime:start')
+             ->setDescription('Start the runtime server')
+             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, ripple, roadrunner)')
+             ->addOption('host', null, Option::VALUE_OPTIONAL, 'The host to listen on')
+             ->addOption('port', null, Option::VALUE_OPTIONAL, 'The port to listen on')
+             ->addOption('workers', null, Option::VALUE_OPTIONAL, 'The number of worker processes')
+             ->addOption('debug', null, Option::VALUE_NONE, 'Enable debug mode')
+             ->addOption('daemon', null, Option::VALUE_NONE, 'Run the server in daemon mode');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    protected function execute(Input $input, Output $output)
     {
         $runtime = $input->getArgument('runtime');
         $host = $input->getOption('host');
@@ -56,7 +55,7 @@ class RuntimeStartCommand extends Command
         }
 
         // 获取应用实例和配置
-        $app = app();
+        $app = $this->app;
         $config = $app->make('runtime.config');
         $runtimeManager = new RuntimeManager($app, $config);
 
@@ -66,7 +65,7 @@ class RuntimeStartCommand extends Command
 
         $this->displayStartupInfo($output, $runtimeManager, $options);
 
-        return Command::SUCCESS;
+        return 0;
     }
 
     protected function buildStartOptions(?string $runtime, array $options): array
@@ -117,7 +116,7 @@ class RuntimeStartCommand extends Command
         return $options;
     }
 
-    protected function displayStartupInfo(OutputInterface $output, RuntimeManager $runtimeManager, array $options): void
+    protected function displayStartupInfo(Output $output, RuntimeManager $runtimeManager, array $options): void
     {
         $runtime = $runtimeManager->getRuntimeInfo();
         $runtimeName = $runtime['name'];
