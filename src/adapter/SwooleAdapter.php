@@ -62,6 +62,11 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
             'max_wait_time' => 60,  // 最大等待时间
             'reload_async' => true,  // 异步重载
             'max_conn' => 1024,  // 最大连接数
+            'heartbeat_check_interval' => 60,  // 心跳检测间隔
+            'heartbeat_idle_time' => 600,  // 连接最大空闲时间
+            'buffer_output_size' => 2097152,  // 输出缓冲区大小
+            'enable_unsafe_event' => false,  // 禁用不安全事件
+            'discard_timeout_request' => true,  // 丢弃超时请求
         ],
     ];
 
@@ -260,6 +265,12 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
         // 服务器关闭事件
         $this->server->on('Shutdown', [$this, 'onShutdown']);
 
+        // Worker 错误事件
+        $this->server->on('WorkerError', [$this, 'onWorkerError']);
+
+        // Worker 退出事件
+        $this->server->on('WorkerExit', [$this, 'onWorkerExit']);
+
         // 如果启用了Task进程，绑定Task事件
         $config = array_merge($this->defaultConfig, $this->config);
         if (isset($config['settings']['task_worker_num']) && $config['settings']['task_worker_num'] > 0) {
@@ -283,8 +294,15 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                 cli_set_process_title("swoole-worker-{$workerId}");
             }
 
-            // 设置工作进程的执行时间限制
+            // 设置工作进程的执行时间限制和信号处理
             set_time_limit(0);
+
+            // 禁用一些可能导致问题的信号处理
+            if (function_exists('pcntl_signal')) {
+                pcntl_signal(SIGALRM, SIG_IGN);  // 忽略SIGALRM信号
+                pcntl_signal(SIGTERM, SIG_DFL);  // 默认处理SIGTERM
+                pcntl_signal(SIGINT, SIG_DFL);   // 默认处理SIGINT
+            }
 
             // 判断是否为Task进程
             $isTaskWorker = $workerId >= $server->setting['worker_num'];
@@ -294,7 +312,14 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                 if ($this->app && method_exists($this->app, 'initialize')) {
                     // 简化的初始化，避免耗时操作
                     try {
+                        // 临时禁用错误报告，避免初始化过程中的警告影响进程
+                        $oldErrorReporting = error_reporting(E_ERROR | E_PARSE);
+
                         $this->app->initialize();
+
+                        // 恢复错误报告
+                        error_reporting($oldErrorReporting);
+
                     } catch (\Throwable $e) {
                         echo "Worker #{$workerId} app initialization failed: " . $e->getMessage() . "\n";
                         // 不抛出异常，让进程继续运行
@@ -357,6 +382,50 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     public function onShutdown(Server $server): void
     {
         echo "Swoole HTTP Server shutdown\n";
+    }
+
+    /**
+     * Worker 错误事件处理
+     *
+     * @param Server $server Swoole服务器实例
+     * @param int $workerId Worker ID
+     * @param int $workerPid Worker PID
+     * @param int $exitCode 退出码
+     * @param int $signal 信号
+     * @return void
+     */
+    public function onWorkerError(Server $server, int $workerId, int $workerPid, int $exitCode, int $signal): void
+    {
+        echo "Worker Error: Worker #{$workerId} (PID: {$workerPid}) exited with code {$exitCode}, signal {$signal}\n";
+
+        // 记录常见信号的含义
+        $signalNames = [
+            1 => 'SIGHUP',
+            2 => 'SIGINT',
+            3 => 'SIGQUIT',
+            9 => 'SIGKILL',
+            14 => 'SIGALRM',
+            15 => 'SIGTERM',
+        ];
+
+        $signalName = $signalNames[$signal] ?? "UNKNOWN({$signal})";
+        echo "Signal: {$signalName}\n";
+
+        if ($signal === 14) {
+            echo "SIGALRM detected - this may be caused by alarm() calls or timer conflicts\n";
+        }
+    }
+
+    /**
+     * Worker 退出事件处理
+     *
+     * @param Server $server Swoole服务器实例
+     * @param int $workerId Worker ID
+     * @return void
+     */
+    public function onWorkerExit(Server $server, int $workerId): void
+    {
+        echo "Worker #{$workerId} exited normally\n";
     }
 
     /**
