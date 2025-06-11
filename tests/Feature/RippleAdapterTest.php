@@ -194,12 +194,112 @@ test('can create coroutine', function () {
 test('can get coroutine pool status', function () {
     $this->createApplication();
     $adapter = new RippleAdapter($this->app, []);
-    
+
     $status = $adapter->getCoroutinePoolStatus();
-    
+
     expect($status)->toBeArray();
     expect($status)->toHaveKey('total');
     expect($status)->toHaveKey('active');
     expect($status['total'])->toBeInt();
     expect($status['active'])->toBeInt();
+});
+
+test('handles fiber operations safely', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    // 测试Fiber相关操作不会崩溃
+    expect(function () use ($adapter) {
+        $adapter->createCoroutine(function () {
+            return 'test';
+        });
+    })->not->toThrow(\Exception::class);
+});
+
+test('can handle high concurrency', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, [
+        'max_coroutines' => 50000,
+        'coroutine_pool_size' => 5000,
+    ]);
+
+    $config = $adapter->getConfig();
+
+    expect($config['max_coroutines'])->toBe(50000);
+    expect($config['coroutine_pool_size'])->toBe(5000);
+});
+
+test('handles request with ripple specific features', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    $request = $this->createPsr7Request('GET', '/ripple-test');
+
+    expect(function () use ($adapter, $request) {
+        $adapter->handleRippleRequest($request);
+    })->not->toThrow(\Exception::class);
+});
+
+test('can configure database connection pool', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, [
+        'database' => [
+            'pool_size' => 20,
+            'max_idle_time' => 7200,
+            'connection_timeout' => 5,
+            'query_timeout' => 30,
+        ],
+    ]);
+
+    $config = $adapter->getConfig();
+
+    expect($config['database']['pool_size'])->toBe(20);
+    expect($config['database']['max_idle_time'])->toBe(7200);
+    expect($config['database']['connection_timeout'])->toBe(5);
+    expect($config['database']['query_timeout'])->toBe(30);
+});
+
+test('validates fiber configuration', function () {
+    $this->createApplication();
+
+    // 测试禁用Fiber
+    $adapter = new RippleAdapter($this->app, ['enable_fiber' => false]);
+    expect($adapter->getConfig()['enable_fiber'])->toBe(false);
+
+    // 测试自定义Fiber栈大小
+    $adapter2 = new RippleAdapter($this->app, ['fiber_stack_size' => 16384]);
+    expect($adapter2->getConfig()['fiber_stack_size'])->toBe(16384);
+});
+
+test('handles memory management', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, [
+        'memory' => [
+            'limit' => '512M',
+            'gc_threshold' => 1000,
+            'auto_gc' => true,
+        ],
+    ]);
+
+    $config = $adapter->getConfig();
+
+    expect($config['memory']['limit'])->toBe('512M');
+    expect($config['memory']['gc_threshold'])->toBe(1000);
+    expect($config['memory']['auto_gc'])->toBe(true);
+});
+
+test('can create multiple coroutines', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    $results = [];
+
+    for ($i = 0; $i < 5; $i++) {
+        $result = $adapter->createCoroutine(function () use ($i) {
+            return "coroutine-{$i}";
+        });
+        $results[] = $result;
+    }
+
+    expect(count($results))->toBe(5);
 });

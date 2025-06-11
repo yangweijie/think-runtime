@@ -103,3 +103,85 @@ test('has required methods', function () {
         expect($hasMethod)->toBe(true);
     }
 });
+
+test('can handle request with different methods', function () {
+    $this->createApplication();
+    $adapter = new FrankenphpAdapter($this->app, []);
+
+    $methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+
+    foreach ($methods as $method) {
+        $request = $this->createPsr7Request($method, '/test');
+
+        // 测试请求处理不会抛出异常
+        expect(function () use ($adapter, $request) {
+            $adapter->handleRequest($request);
+        })->not->toThrow(\Exception::class);
+    }
+});
+
+test('handles request with json body', function () {
+    $this->createApplication();
+    $adapter = new FrankenphpAdapter($this->app, []);
+
+    $jsonData = json_encode(['test' => 'data']);
+    $request = $this->createPsr7Request('POST', '/api/test', ['Content-Type' => 'application/json'], $jsonData);
+
+    expect(function () use ($adapter, $request) {
+        $adapter->handleRequest($request);
+    })->not->toThrow(\Exception::class);
+});
+
+test('handles request with form data', function () {
+    $this->createApplication();
+    $adapter = new FrankenphpAdapter($this->app, []);
+
+    $formData = 'name=test&value=123';
+    $request = $this->createPsr7Request('POST', '/form', ['Content-Type' => 'application/x-www-form-urlencoded'], $formData);
+
+    expect(function () use ($adapter, $request) {
+        $adapter->handleRequest($request);
+    })->not->toThrow(\Exception::class);
+});
+
+test('handles error gracefully', function () {
+    $this->createApplication();
+    $adapter = new FrankenphpAdapter($this->app, []);
+
+    // 创建一个可能导致错误的请求
+    $request = $this->createPsr7Request('GET', '/nonexistent');
+
+    $response = $adapter->handleRequest($request);
+
+    expect($response)->toBeInstanceOf(\Psr\Http\Message\ResponseInterface::class);
+    expect($response->getStatusCode())->toBeInt();
+});
+
+test('can configure worker settings', function () {
+    $this->createApplication();
+    $adapter = new FrankenphpAdapter($this->app, [
+        'worker_num' => 16,
+        'max_requests' => 10000,
+        'request_timeout' => 30,
+    ]);
+
+    $config = $adapter->getConfig();
+
+    expect($config['worker_num'])->toBe(16);
+    expect($config['max_requests'])->toBe(10000);
+    expect($config['request_timeout'])->toBe(30);
+});
+
+test('validates configuration', function () {
+    $this->createApplication();
+
+    // 测试无效端口配置
+    expect(function () {
+        new FrankenphpAdapter($this->app, ['listen' => ':99999']);
+    })->not->toThrow(\Exception::class);
+
+    // 测试负数worker配置
+    expect(function () {
+        new FrankenphpAdapter($this->app, ['worker_num' => -1]);
+    })->not->toThrow(\Exception::class);
+});

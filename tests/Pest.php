@@ -12,6 +12,9 @@ use yangweijie\thinkRuntime\Tests\TestCase;
 
 uses(TestCase::class)->in('Unit', 'Feature');
 
+// 性能测试使用PHPUnit基类
+uses(\yangweijie\thinkRuntime\Tests\TestCase::class)->in('Performance');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations

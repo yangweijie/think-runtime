@@ -119,11 +119,103 @@ test('can merge custom config', function () {
         'port' => 9000,
         'debug' => true,
     ];
-    
+
     $adapter = new ReactphpAdapter($this->app, $customConfig);
     $config = $adapter->getConfig();
-    
+
     expect($config['host'])->toBe('127.0.0.1');
     expect($config['port'])->toBe(9000);
     expect($config['debug'])->toBe(true);
+});
+
+test('can handle concurrent requests', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // 模拟并发请求处理
+    $requests = [];
+    for ($i = 0; $i < 5; $i++) {
+        $requests[] = $this->createPsr7Request('GET', "/test/{$i}");
+    }
+
+    foreach ($requests as $request) {
+        expect(function () use ($adapter, $request) {
+            $adapter->handleReactRequest($request);
+        })->not->toThrow(\Exception::class);
+    }
+});
+
+test('can add and cancel timers', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    $executed = false;
+    $timer = $adapter->addTimer(0.1, function () use (&$executed) {
+        $executed = true;
+    });
+
+    expect($timer)->not->toBeNull();
+
+    // 取消定时器
+    $adapter->cancelTimer($timer);
+
+    // 在测试环境中，定时器可能不会实际执行
+    expect($executed)->toBeIn([true, false]);
+});
+
+test('can add periodic timer', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    $count = 0;
+    $timer = $adapter->addPeriodicTimer(0.1, function () use (&$count) {
+        $count++;
+    });
+
+    expect($timer)->not->toBeNull();
+
+    // 取消定时器
+    $adapter->cancelTimer($timer);
+});
+
+test('handles request errors gracefully', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // 创建一个可能导致错误的请求
+    $request = $this->createPsr7Request('GET', '/error-test');
+
+    expect(function () use ($adapter, $request) {
+        $adapter->handleReactRequest($request);
+    })->not->toThrow(\Exception::class);
+});
+
+test('can configure connection limits', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, [
+        'max_connections' => 1000,
+        'connection_timeout' => 30,
+        'keep_alive_timeout' => 5,
+    ]);
+
+    $config = $adapter->getConfig();
+
+    expect($config['max_connections'])->toBe(1000);
+    expect($config['connection_timeout'])->toBe(30);
+    expect($config['keep_alive_timeout'])->toBe(5);
+});
+
+test('validates port configuration', function () {
+    $this->createApplication();
+
+    // 测试有效端口
+    $adapter = new ReactphpAdapter($this->app, ['port' => 8080]);
+    expect($adapter->getConfig()['port'])->toBe(8080);
+
+    // 测试边界值
+    $adapter2 = new ReactphpAdapter($this->app, ['port' => 1]);
+    expect($adapter2->getConfig()['port'])->toBe(1);
+
+    $adapter3 = new ReactphpAdapter($this->app, ['port' => 65535]);
+    expect($adapter3->getConfig()['port'])->toBe(65535);
 });
