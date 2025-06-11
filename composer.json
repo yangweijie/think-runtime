@@ -50,6 +50,8 @@
         "dunglas/frankenphp": "Required for FrankenPHP runtime adapter (modern PHP app server)",
         "react/http": "Required for ReactPHP runtime adapter (event-driven async HTTP server)",
         "react/socket": "Required for ReactPHP runtime adapter (async socket server)",
+        "react/promise": "Required for ReactPHP runtime adapter (promise implementation)",
+        "ringcentral/psr7": "Required for ReactPHP runtime adapter (PSR-7 implementation)",
         "cloudtay/ripple": "Required for Ripple runtime adapter (high-performance coroutine HTTP server)",
         "spiral/roadrunner": "Required for RoadRunner runtime adapter"
     },

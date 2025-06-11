@@ -10,8 +10,6 @@ use React\Http\HttpServer;
 use React\Http\Message\Response;
 use React\Socket\SocketServer;
 use Psr\Http\Message\ServerRequestInterface;
-use Nyholm\Psr7\Factory\Psr17Factory;
-use Nyholm\Psr7Server\ServerRequestCreator;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -78,6 +76,9 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
             throw new \RuntimeException('ReactPHP is not available');
         }
 
+        // 设置无限执行时间，ReactPHP服务器需要持续运行
+        set_time_limit(0);
+
         // 初始化应用
         $this->app->initialize();
 
@@ -101,11 +102,17 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
 
         $config = array_merge($this->defaultConfig, $this->config);
 
+        // 设置无限执行时间，因为ReactPHP服务器需要持续运行
+        set_time_limit(0);
+        ini_set('memory_limit', '512M');
+
         echo "ReactPHP HTTP Server starting...\n";
         echo "Listening on: {$config['host']}:{$config['port']}\n";
         echo "Event-driven: Yes\n";
         echo "Max connections: {$config['max_connections']}\n";
         echo "WebSocket support: " . ($config['websocket'] ? 'Yes' : 'No') . "\n";
+        echo "Memory limit: " . ini_get('memory_limit') . "\n";
+        echo "Execution time: Unlimited\n";
         echo "Press Ctrl+C to stop the server\n\n";
 
         // 启动事件循环
@@ -179,7 +186,9 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     {
         return class_exists('React\\EventLoop\\Loop') &&
                class_exists('React\\Http\\HttpServer') &&
-               class_exists('React\\Socket\\SocketServer');
+               class_exists('React\\Socket\\SocketServer') &&
+               class_exists('React\\Http\\Message\\Response') &&
+               class_exists('React\\Promise\\Promise');
     }
 
     /**

@@ -40,6 +40,7 @@ php think vendor:publish
 
 ### 故障排除
 
+#### 1. 命令不可用
 如果安装后没有看到runtime命令，请尝试以下解决方案：
 
 ```bash
@@ -49,6 +50,27 @@ php think clear
 
 # 方案2: 手动注册（运行项目根目录下的脚本）
 php vendor/yangweijie/think-runtime/test-thinkphp-commands.php
+```
+
+#### 2. ReactPHP 依赖问题
+如果使用 ReactPHP 运行时遇到 `Class "RingCentral\Psr7\Request" not found` 错误：
+
+```bash
+# 自动安装 ReactPHP 依赖
+php vendor/yangweijie/think-runtime/install-reactphp.php
+
+# 或手动安装
+composer require react/http react/socket react/promise ringcentral/psr7
+```
+
+#### 3. Swoole 进程问题
+如果 Swoole 运行时出现 Worker 进程退出：
+
+```bash
+# 检查 Swoole 版本
+php --ri swoole
+
+# 确保版本 >= 4.8.0
 ```
 
 ## 快速开始
