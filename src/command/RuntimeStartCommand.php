@@ -1,13 +1,13 @@
 <?php
 
-namespace think\runtime\command;
+namespace yangweijie\thinkRuntime\command;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use think\runtime\RuntimeManager;
+use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 class RuntimeStartCommand extends Command
 {
@@ -55,15 +55,14 @@ class RuntimeStartCommand extends Command
             $options['daemon'] = true;
         }
 
-        $runtimeManager = new RuntimeManager();
-
-        if ($runtime) {
-            $runtimeManager->setRuntime($runtime);
-        }
+        // 获取应用实例和配置
+        $app = app();
+        $config = $app->make('runtime.config');
+        $runtimeManager = new RuntimeManager($app, $config);
 
         $options = $this->buildStartOptions($runtime, $options);
 
-        $runtimeManager->start($options);
+        $runtimeManager->start($runtime, $options);
 
         $this->displayStartupInfo($output, $runtimeManager, $options);
 

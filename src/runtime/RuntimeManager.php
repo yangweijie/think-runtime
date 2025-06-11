@@ -13,6 +13,7 @@ use yangweijie\thinkRuntime\adapter\FrankenphpAdapter;
 use yangweijie\thinkRuntime\adapter\ReactphpAdapter;
 use yangweijie\thinkRuntime\adapter\RippleAdapter;
 use yangweijie\thinkRuntime\adapter\RoadrunnerAdapter;
+use yangweijie\thinkRuntime\adapter\FpmAdapter;
 
 /**
  * 运行时管理器
@@ -40,6 +41,7 @@ class RuntimeManager
      * @var array<string, string>
      */
     protected array $adapters = [
+        'fpm' => FpmAdapter::class,
         'swoole' => SwooleAdapter::class,
         'frankenphp' => FrankenphpAdapter::class,
         'reactphp' => ReactphpAdapter::class,

@@ -36,13 +36,29 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
         'port' => 9501,
         'mode' => SWOOLE_PROCESS,
         'sock_type' => SWOOLE_SOCK_TCP,
+        'worker_num' => 4,
+        'task_worker_num' => 0,  // 默认不启用Task进程
+        'max_request' => 10000,
+        'dispatch_mode' => 2,
+        'debug_mode' => 0,
+        'enable_static_handler' => false,
+        'document_root' => '/tmp',  // 默认文档根目录，启动时会重新设置
+        'daemonize' => false,
+        'enable_coroutine' => true,
+        'max_coroutine' => 100000,
+        'socket_buffer_size' => 2097152,
         'settings' => [
             'worker_num' => 4,
-            'task_worker_num' => 2,
+            'task_worker_num' => 0,  // 默认不启用Task进程
             'max_request' => 10000,
             'dispatch_mode' => 2,
             'debug_mode' => 0,
             'enable_static_handler' => false,
+            'document_root' => '/tmp',  // 默认文档根目录，启动时会重新设置
+            'daemonize' => 0,
+            'enable_coroutine' => 1,
+            'max_coroutine' => 100000,
+            'socket_buffer_size' => 2097152,
         ],
     ];
 
@@ -58,6 +74,15 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
         }
 
         $config = array_merge($this->defaultConfig, $this->config);
+
+        // 动态设置文档根目录
+        if (!isset($config['settings']['document_root']) || $config['settings']['document_root'] === '/tmp') {
+            $config['settings']['document_root'] = getcwd() . '/public';
+            // 如果public目录不存在，使用当前目录
+            if (!is_dir($config['settings']['document_root'])) {
+                $config['settings']['document_root'] = getcwd();
+            }
+        }
 
         $this->server = new Server(
             $config['host'],
@@ -167,6 +192,38 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 获取配置
+     *
+     * @return array
+     */
+    public function getConfig(): array
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+
+        // 如果有嵌套的settings配置，将其合并到顶层
+        if (isset($config['settings']) && is_array($config['settings'])) {
+            $config = array_merge($config, $config['settings']);
+        }
+
+        // 如果用户配置中有直接的配置项，它们应该覆盖settings中的配置
+        if (!empty($this->config)) {
+            $config = array_merge($config, $this->config);
+        }
+
+        return $config;
+    }
+
+    /**
+     * 获取Swoole服务器实例
+     *
+     * @return Server|null
+     */
+    public function getSwooleServer(): ?Server
+    {
+        return $this->server;
+    }
+
+    /**
      * 绑定Swoole事件
      *
      * @return void
@@ -184,6 +241,13 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
 
         // 服务器关闭事件
         $this->server->on('Shutdown', [$this, 'onShutdown']);
+
+        // 如果启用了Task进程，绑定Task事件
+        $config = array_merge($this->defaultConfig, $this->config);
+        if (isset($config['settings']['task_worker_num']) && $config['settings']['task_worker_num'] > 0) {
+            $this->server->on('Task', [$this, 'onTask']);
+            $this->server->on('Finish', [$this, 'onFinish']);
+        }
     }
 
     /**
@@ -245,6 +309,35 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     public function onShutdown(Server $server): void
     {
         echo "Swoole HTTP Server shutdown\n";
+    }
+
+    /**
+     * Task事件处理
+     *
+     * @param Server $server Swoole服务器实例
+     * @param int $taskId Task ID
+     * @param int $reactorId Reactor ID
+     * @param mixed $data Task数据
+     * @return mixed
+     */
+    public function onTask(Server $server, int $taskId, int $reactorId, $data)
+    {
+        // 默认的Task处理逻辑
+        return "Task {$taskId} completed";
+    }
+
+    /**
+     * Finish事件处理
+     *
+     * @param Server $server Swoole服务器实例
+     * @param int $taskId Task ID
+     * @param mixed $data Task返回数据
+     * @return void
+     */
+    public function onFinish(Server $server, int $taskId, $data): void
+    {
+        // 默认的Finish处理逻辑
+        echo "Task {$taskId} finished with result: {$data}\n";
     }
 
     /**

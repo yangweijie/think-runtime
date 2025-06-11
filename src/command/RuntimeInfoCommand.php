@@ -1,11 +1,11 @@
 <?php
 
-namespace think\runtime\command;
+namespace yangweijie\thinkRuntime\command;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use think\runtime\RuntimeManager;
+use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 class RuntimeInfoCommand extends Command
 {
@@ -13,17 +13,20 @@ class RuntimeInfoCommand extends Command
     {
         $this
             ->setName('runtime:info')
-            ->setDescription('Display runtime information');
+            ->setDescription('Show runtime information');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $runtimeManager = new RuntimeManager();
+        // 获取应用实例和配置
+        $app = app();
+        $config = $app->make('runtime.config');
+        $runtimeManager = new RuntimeManager($app, $config);
         $runtimeInfo = $runtimeManager->getRuntimeInfo();
 
         $this->displaySystemInfo($output);
         $this->displayRuntimeInfo($output, $runtimeInfo);
-        $this->displayAvailableRuntimes($output, $runtimeInfo['available_runtimes']);
+        $this->displayAvailableRuntimes($output, $runtimeInfo['all_available']);
         $this->displayExtensionInfo($output);
 
         return Command::SUCCESS;
