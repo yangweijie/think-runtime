@@ -13,6 +13,7 @@ return [
     // 自动检测顺序
     'auto_detect_order' => [
         'bref',
+        'vercel',
         'swoole',
         'frankenphp',
         'reactphp',
@@ -173,6 +174,40 @@ return [
             'monitor' => [
                 'enable' => true,
                 'slow_request_threshold' => 1000, // 毫秒
+            ],
+        ],
+        'vercel' => [
+            // Vercel函数配置
+            'vercel' => [
+                'timeout' => 10, // Vercel默认超时10秒
+                'memory' => 1024, // 默认内存1GB
+                'region' => 'auto', // 自动选择区域
+                'runtime' => 'php-8.1',
+            ],
+            // HTTP处理配置
+            'http' => [
+                'enable_cors' => true,
+                'cors_origin' => '*',
+                'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'cors_headers' => 'Content-Type, Authorization, X-Requested-With',
+                'max_body_size' => '5mb', // Vercel请求体限制
+            ],
+            // 错误处理配置
+            'error' => [
+                'display_errors' => false,
+                'log_errors' => true,
+                'error_reporting' => E_ALL & ~E_NOTICE,
+            ],
+            // 性能监控配置
+            'monitor' => [
+                'enable' => true,
+                'slow_request_threshold' => 1000, // 毫秒
+                'memory_threshold' => 80, // 内存使用阈值百分比
+            ],
+            // 静态文件配置
+            'static' => [
+                'enable' => false, // Vercel通常由CDN处理静态文件
+                'extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg'],
             ],
         ],
     ],

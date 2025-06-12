@@ -54,7 +54,8 @@
         "spiral/roadrunner": "Required for RoadRunner runtime adapter",
         "workerman/workerman": "Required for Workerman runtime adapter (high-performance socket server framework)",
         "runtime/bref": "Required for Bref runtime adapter (AWS Lambda serverless runtime)",
-        "bref/bref": "Required for Bref runtime adapter (AWS Lambda PHP runtime)"
+        "bref/bref": "Required for Bref runtime adapter (AWS Lambda PHP runtime)",
+        "vercel/php": "Required for Vercel runtime adapter (Vercel serverless functions)"
     },
     "config": {
         "sort-packages": true,

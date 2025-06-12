@@ -81,14 +81,14 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
             throw new \RuntimeException('Bref runtime is not available');
         }
 
-        $config = array_merge($this->defaultConfig, $this->config);
+        $config = $this->getConfig();
 
         // 设置错误处理
-        if (!$config['error']['display_errors']) {
+        if (!($config['error']['display_errors'] ?? false)) {
             ini_set('display_errors', '0');
         }
-        
-        if ($config['error']['log_errors']) {
+
+        if ($config['error']['log_errors'] ?? true) {
             ini_set('log_errors', '1');
         }
 
@@ -195,6 +195,26 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
     {
         // 在Lambda环境中优先级最高
         return $this->isLambdaEnvironment() ? 200 : 50;
+    }
+
+    /**
+     * 获取运行时配置（重写父类方法）
+     *
+     * @return array
+     */
+    public function getConfig(): array
+    {
+        $merged = $this->defaultConfig;
+
+        foreach ($this->config as $key => $value) {
+            if (is_array($value) && isset($merged[$key]) && is_array($merged[$key])) {
+                $merged[$key] = array_merge($merged[$key], $value);
+            } else {
+                $merged[$key] = $value;
+            }
+        }
+
+        return $merged;
     }
 
     /**

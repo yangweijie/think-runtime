@@ -76,6 +76,7 @@ $adapters = [
     'ripple' => 'yangweijie\\thinkRuntime\\adapter\\RippleAdapter',
     'roadrunner' => 'yangweijie\\thinkRuntime\\adapter\\RoadrunnerAdapter',
     'bref' => 'yangweijie\\thinkRuntime\\adapter\\BrefAdapter',
+    'vercel' => 'yangweijie\\thinkRuntime\\adapter\\VercelAdapter',
 ];
 
 foreach ($adapters as $name => $class) {
