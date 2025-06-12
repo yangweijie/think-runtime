@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 🚀 **高性能**: 支持Swoole、RoadRunner、ReactPHP、FrankenPHP等高性能运行时
+- 🚀 **高性能**: 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Workerman等高性能运行时
 - 🔄 **自动检测**: 自动检测并选择最佳运行时环境
 - 🛠 **易于配置**: 简单的配置文件管理
 - 🧪 **完整测试**: 使用Pest测试框架，确保代码质量
@@ -75,6 +75,7 @@ return [
         'reactphp',
         'ripple',
         'roadrunner',
+        'workerman',
     ],
 
     // 运行时配置
@@ -319,6 +320,60 @@ $manager->registerAdapter('custom', CustomAdapter::class);
 ],
 ```
 
+### Workerman配置
+
+```php
+'workerman' => [
+    'host' => '0.0.0.0',           // 监听地址
+    'port' => 8080,                // 监听端口
+    'count' => 4,                  // 进程数
+    'name' => 'ThinkPHP-Workerman', // 进程名称
+    'user' => '',                  // 运行用户
+    'group' => '',                 // 运行用户组
+    'reloadable' => true,          // 是否可重载
+    'reusePort' => false,          // 端口复用
+    'transport' => 'tcp',          // 传输协议
+    'context' => [],               // Socket上下文选项
+    'protocol' => 'http',          // 应用层协议
+    // 静态文件配置
+    'static_file' => [
+        'enable' => true,           // 启用静态文件服务
+        'document_root' => 'public', // 文档根目录
+        'cache_time' => 3600,       // 缓存时间（秒）
+        'allowed_extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg'], // 允许的文件扩展名
+    ],
+    // 性能监控配置
+    'monitor' => [
+        'enable' => true,           // 启用性能监控
+        'slow_request_threshold' => 1000, // 慢请求阈值（毫秒）
+        'memory_limit' => '256M',   // 内存限制
+    ],
+    // 中间件配置
+    'middleware' => [
+        'cors' => [
+            'enable' => true,       // 启用CORS中间件
+            'allow_origin' => '*',  // 允许的源
+            'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS', // 允许的方法
+            'allow_headers' => 'Content-Type, Authorization, X-Requested-With', // 允许的头
+        ],
+        'security' => [
+            'enable' => true,       // 启用安全中间件
+        ],
+    ],
+    // 日志配置
+    'log' => [
+        'enable' => true,           // 启用日志
+        'file' => 'runtime/logs/workerman.log', // 日志文件
+        'level' => 'info',          // 日志级别
+    ],
+    // 定时器配置
+    'timer' => [
+        'enable' => false,          // 启用定时器
+        'interval' => 60,           // 定时器间隔（秒）
+    ],
+],
+```
+
 ## RoadRunner 运行指南
 
 ### 1. 安装依赖
@@ -469,7 +524,7 @@ php think runtime:start [runtime] [options]
 ```
 
 参数：
-- `runtime`: 运行时名称 (swoole, reactphp, frankenphp, ripple, roadrunner, auto)
+- `runtime`: 运行时名称 (swoole, reactphp, frankenphp, ripple, roadrunner, workerman, auto)
 
 选项：
 - `--host, -H`: 服务器地址 (默认: 0.0.0.0)
@@ -490,6 +545,9 @@ php think runtime:start reactphp --port=8080
 
 # 启动FrankenPHP服务器
 php think runtime:start frankenphp --port=8080 --workers=4
+
+# 启动Workerman服务器
+php think runtime:start workerman --port=8080 --workers=4
 ```
 
 ### runtime:info
@@ -666,7 +724,18 @@ composer cs-fix
 
 ## 更新日志
 
-### v1.1.0 (最新)
+### v1.2.0 (最新)
+- 🆕 **新增 Workerman 适配器**：
+  - 多进程架构，充分利用多核CPU
+  - 事件驱动的高效I/O处理
+  - 内置静态文件服务器
+  - 完整的中间件系统支持
+  - 性能监控和慢请求记录
+  - 定时器支持，后台任务处理
+  - 平滑重启，零停机部署
+  - 内存监控，防止内存泄漏
+
+### v1.1.0
 - 🚀 **Swoole适配器重大改进**：
   - 新增协程上下文管理，提升并发安全性
   - 实现PSR-7工厂复用，减少内存使用20-30%
@@ -690,7 +759,7 @@ composer cs-fix
 
 ### v1.0.0
 - 初始版本发布
-- 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Ripple运行时
+- 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Ripple、Workerman运行时
 - 提供命令行工具
 - 完整的测试覆盖
 - 自动检测最佳运行时环境

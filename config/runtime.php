@@ -17,6 +17,7 @@ return [
         'reactphp',
         'ripple',
         'roadrunner',
+        'workerman',
     ],
 
     // 运行时配置
@@ -103,6 +104,50 @@ return [
             'debug' => false,
             'max_jobs' => 0,
             'memory_limit' => '128M',
+        ],
+        'workerman' => [
+            'host' => '0.0.0.0',
+            'port' => 8080,
+            'count' => 4,
+            'name' => 'ThinkPHP-Workerman',
+            'user' => '',
+            'group' => '',
+            'reloadable' => true,
+            'reusePort' => false,
+            'transport' => 'tcp',
+            'context' => [],
+            'protocol' => 'http',
+            'static_file' => [
+                'enable' => true,
+                'document_root' => 'public',
+                'cache_time' => 3600,
+                'allowed_extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'html', 'htm', 'txt', 'json', 'xml'],
+            ],
+            'monitor' => [
+                'enable' => true,
+                'slow_request_threshold' => 1000,
+                'memory_limit' => '256M',
+            ],
+            'middleware' => [
+                'cors' => [
+                    'enable' => true,
+                    'allow_origin' => '*',
+                    'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                    'allow_headers' => 'Content-Type, Authorization, X-Requested-With',
+                ],
+                'security' => [
+                    'enable' => true,
+                ],
+            ],
+            'log' => [
+                'enable' => true,
+                'file' => 'runtime/logs/workerman.log',
+                'level' => 'info',
+            ],
+            'timer' => [
+                'enable' => false,
+                'interval' => 60,
+            ],
         ],
     ],
 
