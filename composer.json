@@ -52,7 +52,9 @@
         "react/socket": "Required for ReactPHP runtime adapter (async socket server)",
         "cloudtay/ripple": "Required for Ripple runtime adapter (high-performance coroutine HTTP server)",
         "spiral/roadrunner": "Required for RoadRunner runtime adapter",
-        "workerman/workerman": "Required for Workerman runtime adapter (high-performance socket server framework)"
+        "workerman/workerman": "Required for Workerman runtime adapter (high-performance socket server framework)",
+        "runtime/bref": "Required for Bref runtime adapter (AWS Lambda serverless runtime)",
+        "bref/bref": "Required for Bref runtime adapter (AWS Lambda PHP runtime)"
     },
     "config": {
         "sort-packages": true,

@@ -12,6 +12,7 @@ return [
 
     // 自动检测顺序
     'auto_detect_order' => [
+        'bref',
         'swoole',
         'frankenphp',
         'reactphp',
@@ -147,6 +148,31 @@ return [
             'timer' => [
                 'enable' => false,
                 'interval' => 60,
+            ],
+        ],
+        'bref' => [
+            // Lambda运行时配置
+            'lambda' => [
+                'timeout' => 30,
+                'memory' => 512,
+                'environment' => 'production',
+            ],
+            // HTTP处理配置
+            'http' => [
+                'enable_cors' => true,
+                'cors_origin' => '*',
+                'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'cors_headers' => 'Content-Type, Authorization, X-Requested-With',
+            ],
+            // 错误处理配置
+            'error' => [
+                'display_errors' => false,
+                'log_errors' => true,
+            ],
+            // 性能监控配置
+            'monitor' => [
+                'enable' => true,
+                'slow_request_threshold' => 1000, // 毫秒
             ],
         ],
     ],
