@@ -27,6 +27,52 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     protected ?Server $server = null;
 
     /**
+     * 请求创建器（复用）
+     *
+     * @var ServerRequestCreator|null
+     */
+    protected ?ServerRequestCreator $requestCreator = null;
+
+    /**
+     * 协程上下文存储
+     *
+     * @var array
+     */
+    protected array $coroutineContext = [];
+
+    /**
+     * 中间件列表
+     *
+     * @var array
+     */
+    protected array $middlewares = [];
+
+    /**
+     * 静态文件 MIME 类型映射
+     *
+     * @var array
+     */
+    protected array $mimeTypes = [
+        'css' => 'text/css',
+        'js' => 'application/javascript',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'ico' => 'image/x-icon',
+        'svg' => 'image/svg+xml',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf',
+        'eot' => 'application/vnd.ms-fontobject',
+        'html' => 'text/html',
+        'htm' => 'text/html',
+        'txt' => 'text/plain',
+        'json' => 'application/json',
+        'xml' => 'application/xml',
+    ];
+
+    /**
      * 默认配置
      *
      * @var array
@@ -34,39 +80,59 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     protected array $defaultConfig = [
         'host' => '0.0.0.0',
         'port' => 9501,
-        'mode' => SWOOLE_PROCESS,
-        'sock_type' => SWOOLE_SOCK_TCP,
-        'worker_num' => 4,
-        'task_worker_num' => 0,  // 默认不启用Task进程
-        'max_request' => 10000,
-        'dispatch_mode' => 2,
-        'debug_mode' => 0,
-        'enable_static_handler' => false,
-        'document_root' => '/tmp',  // 默认文档根目录，启动时会重新设置
-        'daemonize' => false,
-        'enable_coroutine' => true,
-        'max_coroutine' => 100000,
-        'socket_buffer_size' => 2097152,
+        'mode' => 3, // SWOOLE_PROCESS
+        'sock_type' => 1, // SWOOLE_SOCK_TCP
         'settings' => [
             'worker_num' => 4,
-            'task_worker_num' => 0,  // 默认不启用Task进程
+            'task_worker_num' => 0,
             'max_request' => 10000,
             'dispatch_mode' => 2,
             'debug_mode' => 0,
-            'enable_static_handler' => false,
-            'document_root' => '/tmp',  // 默认文档根目录，启动时会重新设置
+            'enable_static_handler' => true,
+            'document_root' => '',
             'daemonize' => 0,
             'enable_coroutine' => 1,
             'max_coroutine' => 100000,
             'socket_buffer_size' => 2097152,
-            'max_wait_time' => 60,  // 最大等待时间
-            'reload_async' => true,  // 异步重载
-            'max_conn' => 1024,  // 最大连接数
-            'heartbeat_check_interval' => 60,  // 心跳检测间隔
-            'heartbeat_idle_time' => 600,  // 连接最大空闲时间
-            'buffer_output_size' => 2097152,  // 输出缓冲区大小
-            'enable_unsafe_event' => false,  // 禁用不安全事件
-            'discard_timeout_request' => true,  // 丢弃超时请求
+            'max_wait_time' => 60,
+            'reload_async' => true,
+            'max_conn' => 1024,
+            'heartbeat_check_interval' => 60,
+            'heartbeat_idle_time' => 600,
+            'buffer_output_size' => 2097152,
+            'enable_unsafe_event' => false,
+            'discard_timeout_request' => true,
+            // 协程相关配置
+            'hook_flags' => 268435455, // SWOOLE_HOOK_ALL
+            'enable_preemptive_scheduler' => true,
+        ],
+        // 静态文件配置
+        'static_file' => [
+            'enable' => true,
+            'document_root' => 'public',
+            'cache_time' => 3600,
+            'allowed_extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'html', 'htm', 'txt', 'json', 'xml'],
+        ],
+        // WebSocket 配置
+        'websocket' => [
+            'enable' => false,
+        ],
+        // 性能监控配置
+        'monitor' => [
+            'enable' => true,
+            'slow_request_threshold' => 1000, // 毫秒
+        ],
+        // 中间件配置
+        'middleware' => [
+            'cors' => [
+                'enable' => true,
+                'allow_origin' => '*',
+                'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'allow_headers' => 'Content-Type, Authorization, X-Requested-With',
+            ],
+            'security' => [
+                'enable' => true,
+            ],
         ],
     ];
 
@@ -83,13 +149,22 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
 
         $config = array_merge($this->defaultConfig, $this->config);
 
-        // 动态设置文档根目录
-        if (!isset($config['settings']['document_root']) || $config['settings']['document_root'] === '/tmp') {
-            $config['settings']['document_root'] = getcwd() . '/public';
-            // 如果public目录不存在，使用当前目录
-            if (!is_dir($config['settings']['document_root'])) {
-                $config['settings']['document_root'] = getcwd();
-            }
+        // 设置协程 Hook
+        if (isset($config['settings']['hook_flags']) && class_exists('\Swoole\Runtime')) {
+            \Swoole\Runtime::enableCoroutine($config['settings']['hook_flags']);
+        }
+
+        // 初始化请求创建器（复用实例）
+        $this->requestCreator = new ServerRequestCreator(
+            $this->psr17Factory,
+            $this->psr17Factory,
+            $this->psr17Factory,
+            $this->psr17Factory
+        );
+
+        // 设置文档根目录
+        if (empty($config['settings']['document_root'])) {
+            $config['settings']['document_root'] = $this->getPublicPath();
         }
 
         $this->server = new Server(
@@ -104,6 +179,40 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
 
         // 绑定事件
         $this->bindEvents();
+
+        // 初始化中间件
+        $this->initMiddlewares();
+    }
+
+    /**
+     * 初始化中间件
+     *
+     * @return void
+     */
+    protected function initMiddlewares(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+
+        // 添加 CORS 中间件
+        if ($config['middleware']['cors']['enable'] ?? true) {
+            $this->addMiddleware([$this, 'corsMiddleware']);
+        }
+
+        // 添加安全中间件
+        if ($config['middleware']['security']['enable'] ?? true) {
+            $this->addMiddleware([$this, 'securityMiddleware']);
+        }
+    }
+
+    /**
+     * 添加中间件
+     *
+     * @param callable $middleware
+     * @return void
+     */
+    public function addMiddleware(callable $middleware): void
+    {
+        $this->middlewares[] = $middleware;
     }
 
     /**
@@ -271,6 +380,13 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
         // Worker 退出事件
         $this->server->on('WorkerExit', [$this, 'onWorkerExit']);
 
+        // WebSocket 事件
+        if ($this->isWebSocketEnabled()) {
+            $this->server->on('Open', [$this, 'onWebSocketOpen']);
+            $this->server->on('Message', [$this, 'onWebSocketMessage']);
+            $this->server->on('Close', [$this, 'onWebSocketClose']);
+        }
+
         // 如果启用了Task进程，绑定Task事件
         $config = array_merge($this->defaultConfig, $this->config);
         if (isset($config['settings']['task_worker_num']) && $config['settings']['task_worker_num'] > 0) {
@@ -337,7 +453,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
-     * HTTP请求事件处理
+     * HTTP请求事件处理（改进版）
      *
      * @param SwooleRequest $request Swoole请求对象
      * @param SwooleResponse $response Swoole响应对象
@@ -345,19 +461,39 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function onRequest(SwooleRequest $request, SwooleResponse $response): void
     {
-        try {
-            // 转换为PSR-7请求
-            $psr7Request = $this->convertSwooleRequestToPsr7($request);
+        $startTime = microtime(true);
 
-            // 处理请求
-            $psr7Response = $this->handleRequest($psr7Request);
+        // 使用协程处理请求
+        go(function () use ($request, $response, $startTime) {
+            try {
+                // 设置协程上下文
+                $this->setCoroutineContext($request, $startTime);
 
-            // 发送响应
-            $this->sendSwooleResponse($response, $psr7Response);
+                // 运行中间件
+                if (!$this->runMiddlewares($request, $response)) {
+                    return;
+                }
 
-        } catch (\Throwable $e) {
-            $this->handleSwooleError($response, $e);
-        }
+                // 处理静态文件
+                if ($this->handleStaticFile($request, $response)) {
+                    return;
+                }
+
+                // 处理动态请求
+                $psr7Request = $this->convertSwooleRequestToPsr7($request);
+                $psr7Response = $this->handleRequest($psr7Request);
+                $this->sendSwooleResponse($response, $psr7Response);
+
+                // 记录请求指标
+                $this->logRequestMetrics($request, $startTime);
+
+            } catch (\Throwable $e) {
+                $this->handleSwooleError($response, $e);
+            } finally {
+                // 清理协程上下文
+                $this->clearCoroutineContext();
+            }
+        });
     }
 
     /**
@@ -458,20 +594,22 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
-     * 将Swoole请求转换为PSR-7请求
+     * 将Swoole请求转换为PSR-7请求（优化版）
      *
      * @param SwooleRequest $request Swoole请求
      * @return \Psr\Http\Message\ServerRequestInterface PSR-7请求
      */
     protected function convertSwooleRequestToPsr7(SwooleRequest $request): \Psr\Http\Message\ServerRequestInterface
     {
-        $psr17Factory = new Psr17Factory();
-        $creator = new ServerRequestCreator(
-            $psr17Factory,
-            $psr17Factory,
-            $psr17Factory,
-            $psr17Factory
-        );
+        // 使用复用的工厂实例
+        if (!$this->requestCreator) {
+            $this->requestCreator = new ServerRequestCreator(
+                $this->psr17Factory,
+                $this->psr17Factory,
+                $this->psr17Factory,
+                $this->psr17Factory
+            );
+        }
 
         // 构建服务器变量
         $server = array_merge($_SERVER, [
@@ -480,9 +618,11 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
             'PATH_INFO' => $request->server['path_info'] ?? '/',
             'QUERY_STRING' => $request->server['query_string'] ?? '',
             'HTTP_HOST' => $request->header['host'] ?? 'localhost',
+            'CONTENT_TYPE' => $request->header['content-type'] ?? '',
+            'CONTENT_LENGTH' => $request->header['content-length'] ?? '',
         ]);
 
-        return $creator->fromArrays(
+        return $this->requestCreator->fromArrays(
             $server,
             $request->header ?? [],
             $request->cookie ?? [],
@@ -530,5 +670,287 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
             'message' => $e->getMessage(),
             'code' => $e->getCode(),
         ], JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * 设置协程上下文
+     *
+     * @param SwooleRequest $request
+     * @param float $startTime
+     * @return void
+     */
+    protected function setCoroutineContext(SwooleRequest $request, float $startTime): void
+    {
+        if (class_exists('\Swoole\Coroutine')) {
+            $cid = \Swoole\Coroutine::getCid();
+            $this->coroutineContext[$cid] = [
+                'request_id' => uniqid(),
+                'start_time' => $startTime,
+                'request' => $request,
+            ];
+        }
+    }
+
+    /**
+     * 清理协程上下文
+     *
+     * @return void
+     */
+    protected function clearCoroutineContext(): void
+    {
+        if (class_exists('\Swoole\Coroutine')) {
+            $cid = \Swoole\Coroutine::getCid();
+            unset($this->coroutineContext[$cid]);
+        }
+    }
+
+    /**
+     * 运行中间件
+     *
+     * @param SwooleRequest $request
+     * @param SwooleResponse $response
+     * @return bool
+     */
+    protected function runMiddlewares(SwooleRequest $request, SwooleResponse $response): bool
+    {
+        foreach ($this->middlewares as $middleware) {
+            $result = $middleware($request, $response);
+            if ($result === false) {
+                return false; // 中断请求处理
+            }
+        }
+        return true;
+    }
+
+    /**
+     * CORS 中间件
+     *
+     * @param SwooleRequest $request
+     * @param SwooleResponse $response
+     * @return bool
+     */
+    protected function corsMiddleware(SwooleRequest $request, SwooleResponse $response): bool
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $corsConfig = $config['middleware']['cors'];
+
+        $response->header('Access-Control-Allow-Origin', $corsConfig['allow_origin'] ?? '*');
+        $response->header('Access-Control-Allow-Methods', $corsConfig['allow_methods'] ?? 'GET, POST, PUT, DELETE, OPTIONS');
+        $response->header('Access-Control-Allow-Headers', $corsConfig['allow_headers'] ?? 'Content-Type, Authorization, X-Requested-With');
+        $response->header('Access-Control-Allow-Credentials', 'true');
+
+        // 处理 OPTIONS 预检请求
+        if ($request->server['request_method'] === 'OPTIONS') {
+            $response->status(200);
+            $response->end();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 安全中间件
+     *
+     * @param SwooleRequest $request
+     * @param SwooleResponse $response
+     * @return bool
+     */
+    protected function securityMiddleware(SwooleRequest $request, SwooleResponse $response): bool
+    {
+        $response->header('X-Content-Type-Options', 'nosniff');
+        $response->header('X-Frame-Options', 'DENY');
+        $response->header('X-XSS-Protection', '1; mode=block');
+        $response->header('Referrer-Policy', 'strict-origin-when-cross-origin');
+        return true;
+    }
+
+    /**
+     * 处理静态文件
+     *
+     * @param SwooleRequest $request
+     * @param SwooleResponse $response
+     * @return bool
+     */
+    protected function handleStaticFile(SwooleRequest $request, SwooleResponse $response): bool
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+
+        if (!($config['static_file']['enable'] ?? true)) {
+            return false;
+        }
+
+        $uri = $request->server['request_uri'];
+        $publicPath = $this->getPublicPath();
+        $filePath = $publicPath . $uri;
+
+        // 检查文件是否存在且在允许的目录内
+        if (!$this->isValidStaticFile($filePath, $publicPath)) {
+            return false;
+        }
+
+        // 检查文件扩展名
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        if (!in_array($extension, $config['static_file']['allowed_extensions'])) {
+            return false;
+        }
+
+        // 设置 MIME 类型
+        $mimeType = $this->getMimeType($extension);
+        $response->header('Content-Type', $mimeType);
+
+        // 设置缓存头
+        $cacheTime = $config['static_file']['cache_time'];
+        $response->header('Cache-Control', "public, max-age={$cacheTime}");
+        $response->header('Last-Modified', gmdate('D, d M Y H:i:s', filemtime($filePath)) . ' GMT');
+
+        // 发送文件
+        $response->sendfile($filePath);
+        return true;
+    }
+
+    /**
+     * 检查静态文件是否有效
+     *
+     * @param string $filePath
+     * @param string $publicPath
+     * @return bool
+     */
+    protected function isValidStaticFile(string $filePath, string $publicPath): bool
+    {
+        $realFilePath = realpath($filePath);
+        $realPublicPath = realpath($publicPath);
+
+        return $realFilePath &&
+               $realPublicPath &&
+               strpos($realFilePath, $realPublicPath) === 0 &&
+               is_file($realFilePath);
+    }
+
+    /**
+     * 获取 MIME 类型
+     *
+     * @param string $extension
+     * @return string
+     */
+    protected function getMimeType(string $extension): string
+    {
+        return $this->mimeTypes[$extension] ?? 'application/octet-stream';
+    }
+
+    /**
+     * 获取公共目录路径
+     *
+     * @return string
+     */
+    protected function getPublicPath(): string
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $documentRoot = $config['static_file']['document_root'];
+
+        if (str_starts_with($documentRoot, '/')) {
+            return $documentRoot;
+        }
+
+        return getcwd() . '/' . ltrim($documentRoot, '/');
+    }
+
+    /**
+     * 检查是否启用 WebSocket
+     *
+     * @return bool
+     */
+    protected function isWebSocketEnabled(): bool
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        return $config['websocket']['enable'] ?? false;
+    }
+
+    /**
+     * 记录请求指标
+     *
+     * @param SwooleRequest $request
+     * @param float $startTime
+     * @return void
+     */
+    protected function logRequestMetrics(SwooleRequest $request, float $startTime): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+
+        if (!($config['monitor']['enable'] ?? true)) {
+            return;
+        }
+
+        $endTime = microtime(true);
+        $duration = ($endTime - $startTime) * 1000; // 转换为毫秒
+
+        $metrics = [
+            'method' => $request->server['request_method'],
+            'uri' => $request->server['request_uri'],
+            'duration' => round($duration, 2),
+            'memory' => memory_get_usage(true),
+            'peak_memory' => memory_get_peak_usage(true),
+            'timestamp' => date('Y-m-d H:i:s'),
+        ];
+
+        // 记录慢请求
+        if ($duration > ($config['monitor']['slow_request_threshold'] ?? 1000)) {
+            error_log("Slow request: " . json_encode($metrics));
+        }
+    }
+
+    /**
+     * WebSocket 连接打开事件
+     *
+     * @param Server $server
+     * @param SwooleRequest $request
+     * @return void
+     */
+    public function onWebSocketOpen(Server $server, SwooleRequest $request): void
+    {
+        echo "WebSocket connection opened: {$request->fd}\n";
+    }
+
+    /**
+     * WebSocket 消息事件
+     *
+     * @param Server $server
+     * @param $frame
+     * @return void
+     */
+    public function onWebSocketMessage(Server $server, $frame): void
+    {
+        echo "WebSocket message received from {$frame->fd}: {$frame->data}\n";
+
+        // 处理 WebSocket 消息
+        $response = $this->handleWebSocketMessage($frame);
+
+        if ($response) {
+            $server->push($frame->fd, $response);
+        }
+    }
+
+    /**
+     * WebSocket 连接关闭事件
+     *
+     * @param Server $server
+     * @param int $fd
+     * @return void
+     */
+    public function onWebSocketClose(Server $server, int $fd): void
+    {
+        echo "WebSocket connection closed: {$fd}\n";
+    }
+
+    /**
+     * 处理 WebSocket 消息
+     *
+     * @param $frame
+     * @return string|null
+     */
+    protected function handleWebSocketMessage($frame): ?string
+    {
+        // 默认实现：回显消息
+        return "Echo: " . $frame->data;
     }
 }

@@ -12,11 +12,14 @@ return [
 
     // 自动检测顺序
     'auto_detect_order' => [
+        'bref',
+        'vercel',
         'swoole',
         'frankenphp',
         'reactphp',
         'ripple',
         'roadrunner',
+        'workerman',
     ],
 
     // 运行时配置
@@ -103,6 +106,109 @@ return [
             'debug' => false,
             'max_jobs' => 0,
             'memory_limit' => '128M',
+        ],
+        'workerman' => [
+            'host' => '0.0.0.0',
+            'port' => 8080,
+            'count' => 4,
+            'name' => 'ThinkPHP-Workerman',
+            'user' => '',
+            'group' => '',
+            'reloadable' => true,
+            'reusePort' => false,
+            'transport' => 'tcp',
+            'context' => [],
+            'protocol' => 'http',
+            'static_file' => [
+                'enable' => true,
+                'document_root' => 'public',
+                'cache_time' => 3600,
+                'allowed_extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'html', 'htm', 'txt', 'json', 'xml'],
+            ],
+            'monitor' => [
+                'enable' => true,
+                'slow_request_threshold' => 1000,
+                'memory_limit' => '256M',
+            ],
+            'middleware' => [
+                'cors' => [
+                    'enable' => true,
+                    'allow_origin' => '*',
+                    'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                    'allow_headers' => 'Content-Type, Authorization, X-Requested-With',
+                ],
+                'security' => [
+                    'enable' => true,
+                ],
+            ],
+            'log' => [
+                'enable' => true,
+                'file' => 'runtime/logs/workerman.log',
+                'level' => 'info',
+            ],
+            'timer' => [
+                'enable' => false,
+                'interval' => 60,
+            ],
+        ],
+        'bref' => [
+            // Lambda运行时配置
+            'lambda' => [
+                'timeout' => 30,
+                'memory' => 512,
+                'environment' => 'production',
+            ],
+            // HTTP处理配置
+            'http' => [
+                'enable_cors' => true,
+                'cors_origin' => '*',
+                'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'cors_headers' => 'Content-Type, Authorization, X-Requested-With',
+            ],
+            // 错误处理配置
+            'error' => [
+                'display_errors' => false,
+                'log_errors' => true,
+            ],
+            // 性能监控配置
+            'monitor' => [
+                'enable' => true,
+                'slow_request_threshold' => 1000, // 毫秒
+            ],
+        ],
+        'vercel' => [
+            // Vercel函数配置
+            'vercel' => [
+                'timeout' => 10, // Vercel默认超时10秒
+                'memory' => 1024, // 默认内存1GB
+                'region' => 'auto', // 自动选择区域
+                'runtime' => 'php-8.1',
+            ],
+            // HTTP处理配置
+            'http' => [
+                'enable_cors' => true,
+                'cors_origin' => '*',
+                'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'cors_headers' => 'Content-Type, Authorization, X-Requested-With',
+                'max_body_size' => '5mb', // Vercel请求体限制
+            ],
+            // 错误处理配置
+            'error' => [
+                'display_errors' => false,
+                'log_errors' => true,
+                'error_reporting' => E_ALL & ~E_NOTICE,
+            ],
+            // 性能监控配置
+            'monitor' => [
+                'enable' => true,
+                'slow_request_threshold' => 1000, // 毫秒
+                'memory_threshold' => 80, // 内存使用阈值百分比
+            ],
+            // 静态文件配置
+            'static' => [
+                'enable' => false, // Vercel通常由CDN处理静态文件
+                'extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg'],
+            ],
         ],
     ],
 
