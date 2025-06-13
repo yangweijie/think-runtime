@@ -21,7 +21,7 @@
 | 运行时 | 描述 | 优先级 | 要求 |
 |--------|------|--------|------|
 | Swoole | 基于Swoole的高性能HTTP服务器 | 100 | ext-swoole |
-| FrankenPHP | 现代PHP应用服务器，支持HTTP/2、HTTP/3 | 95 | dunglas/frankenphp |
+| FrankenPHP | 现代PHP应用服务器，支持HTTP/2、HTTP/3 | 95 | frankenphp 二进制文件 |
 | ReactPHP | 事件驱动的异步HTTP服务器 | 92 | react/http, react/socket |
 | Ripple | 基于PHP Fiber的高性能协程HTTP服务器 | 91 | cloudtay/ripple, PHP 8.1+ |
 | RoadRunner | 基于Go的高性能应用服务器 | 90 | spiral/roadrunner |

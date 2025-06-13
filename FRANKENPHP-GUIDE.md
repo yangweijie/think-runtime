@@ -34,12 +34,6 @@ docker pull dunglas/frankenphp
 docker run -p 80:80 -p 443:443 -v $PWD:/app dunglas/frankenphp
 ```
 
-### 方法3: 使用 Composer (开发环境)
-
-```bash
-composer require dunglas/frankenphp
-```
-
 ## 🔧 在 ThinkPHP 中使用 FrankenPHP
 
 ### 1. 安装 think-runtime
