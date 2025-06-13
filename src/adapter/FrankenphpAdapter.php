@@ -155,6 +155,16 @@ class FrankenphpAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 获取运行时配置（合并默认配置）
+     *
+     * @return array
+     */
+    public function getConfig(): array
+    {
+        return array_merge($this->defaultConfig, $this->config);
+    }
+
+    /**
      * 设置环境变量
      *
      * @return void
