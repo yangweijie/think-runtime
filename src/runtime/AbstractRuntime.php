@@ -295,11 +295,6 @@ abstract class AbstractRuntime implements RuntimeInterface
             $this->app->request = null;
         }
 
-        // 重置调试相关的全局状态
-        if (function_exists('debug_reset')) {
-            debug_reset();
-        }
-
         // 重置内存使用统计
         if (function_exists('memory_reset_peak_usage')) {
             memory_reset_peak_usage();
@@ -320,34 +315,6 @@ abstract class AbstractRuntime implements RuntimeInterface
         // 重置应用的响应实例
         if (property_exists($this->app, 'response')) {
             $this->app->response = null;
-        }
-
-        // 重置 think-trace 调试工具条状态
-        $this->resetThinkTraceState();
-
-        // 重置调试模式相关状态
-        if (class_exists('\think\facade\Debug')) {
-            // 尝试重置 Debug facade 的状态
-            try {
-                $debugClass = new ReflectionClass('\think\facade\Debug');
-                if ($debugClass->hasMethod('clear')) {
-                    Debug::clear();
-                }
-            } catch (Throwable $e) {
-                // 忽略错误
-            }
-        }
-
-        // 重置 Trace 相关状态
-        if (class_exists('\think\facade\Trace')) {
-            try {
-                $traceClass = new ReflectionClass('\think\facade\Trace');
-                if ($traceClass->hasMethod('clear')) {
-                    Trace::clear();
-                }
-            } catch (Throwable $e) {
-                // 忽略错误
-            }
         }
 
         // 重置日志状态
@@ -450,132 +417,6 @@ abstract class AbstractRuntime implements RuntimeInterface
         $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
         if (!defined('REQUEST_TIME_RESET')) {
             define('REQUEST_TIME_RESET', true);
-        }
-    }
-
-    /**
-     * 重置 think-trace 调试工具条状态
-     * 专门针对 topthink/think-trace 库的状态重置
-     *
-     * @return void
-     */
-    protected function resetThinkTraceState(): void
-    {
-        // think-trace 相关的类名
-        $traceClasses = [
-            '\think\trace\TraceDebug',
-            '\think\trace\Html',
-            '\think\trace\Console',
-            '\think\Trace',
-            '\topthink\trace\TraceDebug',
-            '\topthink\trace\Html',
-            '\topthink\trace\Console'
-        ];
-
-        foreach ($traceClasses as $className) {
-            if (class_exists($className)) {
-                try {
-                    $reflection = new ReflectionClass($className);
-
-                    // 重置静态属性
-                    $staticProperties = $reflection->getStaticProperties();
-                    foreach ($staticProperties as $propertyName => $value) {
-                        $property = $reflection->getProperty($propertyName);
-                        if ($property->isStatic()) {
-                            // 重置可能的时间相关属性
-                            if (str_contains($propertyName, 'time') ||
-                                str_contains($propertyName, 'start') ||
-                                str_contains($propertyName, 'end') ||
-                                str_contains($propertyName, 'trace') ||
-                                str_contains($propertyName, 'log') ||
-                                str_contains($propertyName, 'debug') ||
-                                str_contains($propertyName, 'info')) {
-
-                                $property->setAccessible(true);
-                                if (is_array($value)) {
-                                    $property->setValue([]);
-                                } elseif (is_numeric($value)) {
-                                    $property->setValue(0);
-                                } elseif (is_string($value)) {
-                                    $property->setValue('');
-                                } elseif (is_bool($value)) {
-                                    $property->setValue(false);
-                                } elseif (is_null($value)) {
-                                    $property->setValue(null);
-                                }
-                            }
-                        }
-                    }
-
-                    // 尝试调用重置方法（如果存在）
-                    $resetMethods = ['reset', 'clear', 'init', 'initialize'];
-                    foreach ($resetMethods as $methodName) {
-                        if ($reflection->hasMethod($methodName)) {
-                            $method = $reflection->getMethod($methodName);
-                            if ($method->isStatic() && $method->isPublic()) {
-                                $method->invoke(null);
-                                break;
-                            }
-                        }
-                    }
-
-                } catch (Throwable $e) {
-                    // 忽略反射错误，继续处理其他类
-                }
-            }
-        }
-
-        // 重置 think-trace 可能使用的全局变量
-        if (isset($GLOBALS['_trace'])) {
-            $GLOBALS['_trace'] = [];
-        }
-        if (isset($GLOBALS['_debug'])) {
-            $GLOBALS['_debug'] = [];
-        }
-        if (isset($GLOBALS['_log'])) {
-            $GLOBALS['_log'] = [];
-        }
-
-        // 重置可能的调试相关常量（通过重新定义）
-        $debugConstants = [
-            'THINK_START_TIME',
-            'THINK_START_MEM',
-            'APP_BEGIN_TIME',
-            'APP_BEGIN_MEM'
-        ];
-
-        foreach ($debugConstants as $constant) {
-            if (defined($constant)) {
-                // 无法直接重置常量，但可以通过其他方式处理
-                // 这里记录一下，实际应用中可能需要其他处理方式
-            }
-        }
-
-        // 强制重置一些可能的调试开始时间
-        if (!defined('THINK_START_TIME_RESET')) {
-            define('THINK_START_TIME_RESET', microtime(true));
-        }
-
-        // 尝试重置 ThinkPHP 应用的调试状态
-        if (method_exists($this->app, 'isDebug')) {
-            // 如果应用有调试状态，确保它是正确的
-        }
-
-        // 重置应用容器中可能的调试服务
-        $debugServices = ['trace', 'debug', 'log'];
-        foreach ($debugServices as $service) {
-            if ($this->app->has($service)) {
-                try {
-                    $instance = $this->app->get($service);
-                    if (method_exists($instance, 'clear')) {
-                        $instance->clear();
-                    } elseif (method_exists($instance, 'reset')) {
-                        $instance->reset();
-                    }
-                } catch (Throwable $e) {
-                    // 忽略错误
-                }
-            }
         }
     }
 }
