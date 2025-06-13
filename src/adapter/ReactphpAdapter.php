@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
 use React\EventLoop\Loop;
+use React\EventLoop\LoopInterface;
+use React\EventLoop\TimerInterface;
 use React\Http\HttpServer;
 use React\Http\Message\Response;
+use React\Promise\PromiseInterface;
 use React\Socket\SocketServer;
 use Psr\Http\Message\ServerRequestInterface;
+use RuntimeException;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
+use function React\Promise\resolve;
 
 /**
  * ReactPHP适配器
@@ -22,9 +27,9 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * ReactPHP事件循环
      *
-     * @var \React\EventLoop\LoopInterface|null
+     * @var LoopInterface|null
      */
-    protected $loop = null;
+    protected ?LoopInterface $loop = null;
 
     /**
      * ReactPHP HTTP服务器
@@ -73,7 +78,7 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('ReactPHP is not available');
+            throw new RuntimeException('ReactPHP is not available');
         }
 
         // 设置无限执行时间，ReactPHP服务器需要持续运行
@@ -257,16 +262,16 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
      * 处理HTTP请求（ReactPHP回调）
      *
      * @param ServerRequestInterface $request PSR-7请求
-     * @return \React\Promise\PromiseInterface
+     * @return PromiseInterface
      */
-    public function handleReactRequest(ServerRequestInterface $request)
+    public function handleReactRequest(ServerRequestInterface $request): PromiseInterface
     {
         try {
             // 处理请求
             $response = $this->handleRequest($request);
 
             // 返回ReactPHP Response
-            return \React\Promise\resolve(
+            return resolve(
                 new Response(
                     $response->getStatusCode(),
                     $response->getHeaders(),
@@ -274,8 +279,8 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
                 )
             );
 
-        } catch (\Throwable $e) {
-            return \React\Promise\resolve(
+        } catch (Throwable $e) {
+            return resolve(
                 $this->handleReactError($e)
             );
         }
@@ -284,10 +289,10 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 处理ReactPHP错误
      *
-     * @param \Throwable $e 异常
+     * @param Throwable $e 异常
      * @return Response ReactPHP响应
      */
-    protected function handleReactError(\Throwable $e): Response
+    protected function handleReactError(Throwable $e): Response
     {
         $content = json_encode([
             'error' => true,
@@ -307,9 +312,9 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 获取事件循环
      *
-     * @return \React\EventLoop\LoopInterface|null
+     * @return LoopInterface|null
      */
-    public function getLoop()
+    public function getLoop(): ?LoopInterface
     {
         return $this->loop;
     }
@@ -319,12 +324,12 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @param float $interval 间隔时间（秒）
      * @param callable $callback 回调函数
-     * @return \React\EventLoop\TimerInterface
+     * @return TimerInterface
      */
-    public function addTimer(float $interval, callable $callback)
+    public function addTimer(float $interval, callable $callback): TimerInterface
     {
         if ($this->loop === null) {
-            throw new \RuntimeException('Event loop not initialized');
+            throw new RuntimeException('Event loop not initialized');
         }
 
         return $this->loop->addTimer($interval, $callback);
@@ -335,12 +340,12 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @param float $interval 间隔时间（秒）
      * @param callable $callback 回调函数
-     * @return \React\EventLoop\TimerInterface
+     * @return TimerInterface
      */
-    public function addPeriodicTimer(float $interval, callable $callback)
+    public function addPeriodicTimer(float $interval, callable $callback): TimerInterface
     {
         if ($this->loop === null) {
-            throw new \RuntimeException('Event loop not initialized');
+            throw new RuntimeException('Event loop not initialized');
         }
 
         return $this->loop->addPeriodicTimer($interval, $callback);
@@ -349,10 +354,10 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 取消定时器
      *
-     * @param \React\EventLoop\TimerInterface $timer 定时器
+     * @param TimerInterface $timer 定时器
      * @return void
      */
-    public function cancelTimer($timer): void
+    public function cancelTimer(TimerInterface $timer): void
     {
         if ($this->loop !== null) {
             $this->loop->cancelTimer($timer);

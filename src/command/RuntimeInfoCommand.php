@@ -9,13 +9,13 @@ use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 class RuntimeInfoCommand extends Command
 {
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('runtime:info')
              ->setDescription('Show runtime information');
     }
 
-    protected function execute(Input $input, Output $output)
+    protected function execute(Input $input, Output $output): int
     {
         // 获取应用实例和配置
         $app = $this->app;

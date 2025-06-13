@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\helper;
 
+use Exception;
 use think\App;
 use think\Console;
+use yangweijie\thinkRuntime\command\RuntimeInfoCommand;
+use yangweijie\thinkRuntime\command\RuntimeStartCommand;
+use yangweijie\thinkRuntime\config\RuntimeConfig;
+use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 /**
  * 命令助手类
@@ -27,8 +32,8 @@ class CommandHelper
         if ($console instanceof Console) {
             // 注册命令
             $console->addCommands([
-                \yangweijie\thinkRuntime\command\RuntimeStartCommand::class,
-                \yangweijie\thinkRuntime\command\RuntimeInfoCommand::class,
+                RuntimeStartCommand::class,
+                RuntimeInfoCommand::class,
             ]);
         }
     }
@@ -44,18 +49,18 @@ class CommandHelper
         // 注册运行时配置
         $app->bind('runtime.config', function (App $app) {
             $config = $app->config->get('runtime', []);
-            return new \yangweijie\thinkRuntime\config\RuntimeConfig($config);
+            return new RuntimeConfig($config);
         });
 
         // 注册运行时管理器
         $app->bind('runtime.manager', function (App $app) {
             $config = $app->make('runtime.config');
-            return new \yangweijie\thinkRuntime\runtime\RuntimeManager($app, $config);
+            return new RuntimeManager($app, $config);
         });
 
         // 注册运行时别名
-        $app->bind(\yangweijie\thinkRuntime\config\RuntimeConfig::class, 'runtime.config');
-        $app->bind(\yangweijie\thinkRuntime\runtime\RuntimeManager::class, 'runtime.manager');
+        $app->bind(RuntimeConfig::class, 'runtime.config');
+        $app->bind(RuntimeManager::class, 'runtime.manager');
     }
     
     /**
@@ -85,7 +90,7 @@ class CommandHelper
     protected static function applyGlobalConfig(App $app): void
     {
         try {
-            /** @var \yangweijie\thinkRuntime\config\RuntimeConfig $config */
+            /** @var RuntimeConfig $config */
             $config = $app->make('runtime.config');
             $globalConfig = $config->getGlobalConfig();
 
@@ -109,7 +114,7 @@ class CommandHelper
                         break;
                 }
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             // 忽略配置错误
         }
     }
@@ -147,7 +152,7 @@ class CommandHelper
                 $result['commands'][basename($class)] = class_exists($class);
             }
             
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $result['errors'][] = $e->getMessage();
         }
         

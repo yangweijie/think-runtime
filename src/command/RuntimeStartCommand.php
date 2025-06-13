@@ -11,7 +11,7 @@ use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 class RuntimeStartCommand extends Command
 {
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('runtime:start')
              ->setDescription('Start the runtime server')
@@ -23,7 +23,7 @@ class RuntimeStartCommand extends Command
              ->addOption('daemon', null, Option::VALUE_NONE, 'Run the server in daemon mode');
     }
 
-    protected function execute(Input $input, Output $output)
+    protected function execute(Input $input, Output $output): int
     {
         $runtime = $input->getArgument('runtime');
         $host = $input->getOption('host');
@@ -42,7 +42,7 @@ class RuntimeStartCommand extends Command
             $options['port'] = $port;
         }
 
-        if ($workers) {
+        if ($workers !== null) {
             $options['worker_num'] = $workers;
         }
 

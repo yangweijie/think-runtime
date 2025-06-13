@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Nyholm\Psr7\Factory\Psr17Factory;
-use Nyholm\Psr7\Response as Psr7Response;
+use RuntimeException;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -78,7 +78,7 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('Bref runtime is not available');
+            throw new RuntimeException('Bref runtime is not available');
         }
 
         $config = $this->getConfig();
@@ -358,7 +358,7 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
             // 输出响应
             echo json_encode($lambdaResponse);
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->handleLambdaError($e);
         }
     }
@@ -377,7 +377,7 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
             // 输出结果
             echo json_encode($result);
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->handleLambdaError($e);
         }
     }
@@ -412,7 +412,7 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
     protected function convertLambdaEventToPsr7(?array $event): ServerRequestInterface
     {
         if (!$event) {
-            throw new \RuntimeException('No Lambda event data available');
+            throw new RuntimeException('No Lambda event data available');
         }
 
         $factory = new Psr17Factory();
@@ -432,7 +432,7 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
             return $this->convertAlbToPsr7($event, $factory);
         }
 
-        throw new \RuntimeException('Unsupported Lambda HTTP event format');
+        throw new RuntimeException('Unsupported Lambda HTTP event format');
     }
 
     /**
@@ -575,10 +575,10 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 处理Lambda错误
      *
-     * @param \Throwable $e
+     * @param Throwable $e
      * @return void
      */
-    protected function handleLambdaError(\Throwable $e): void
+    protected function handleLambdaError(Throwable $e): void
     {
         $config = array_merge($this->defaultConfig, $this->config);
 

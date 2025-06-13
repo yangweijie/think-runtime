@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\runtime;
 
+use InvalidArgumentException;
+use RuntimeException;
 use think\App;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\contract\RuntimeInterface;
 use yangweijie\thinkRuntime\config\RuntimeConfig;
@@ -99,24 +102,24 @@ class RuntimeManager
     public function createRuntime(string $name): RuntimeInterface
     {
         if (!isset($this->adapters[$name])) {
-            throw new \InvalidArgumentException("Unknown runtime adapter: {$name}");
+            throw new InvalidArgumentException("Unknown runtime adapter: {$name}");
         }
 
         $adapterClass = $this->adapters[$name];
         $runtimeConfig = $this->config->getRuntimeConfig($name);
 
         if (!class_exists($adapterClass)) {
-            throw new \RuntimeException("Runtime adapter class not found: {$adapterClass}");
+            throw new RuntimeException("Runtime adapter class not found: {$adapterClass}");
         }
 
         $adapter = new $adapterClass($this->app, $runtimeConfig);
 
         if (!$adapter instanceof AdapterInterface) {
-            throw new \RuntimeException("Runtime adapter must implement AdapterInterface");
+            throw new RuntimeException("Runtime adapter must implement AdapterInterface");
         }
 
         if (!$adapter instanceof RuntimeInterface) {
-            throw new \RuntimeException("Runtime adapter must implement RuntimeInterface");
+            throw new RuntimeException("Runtime adapter must implement RuntimeInterface");
         }
 
         return $adapter;
@@ -160,7 +163,7 @@ class RuntimeManager
         try {
             $runtime = $this->createRuntime($name);
             return $runtime->isAvailable();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             return false;
         }
     }

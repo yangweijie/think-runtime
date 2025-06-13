@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace yangweijie\thinkRuntime\adapter;
 
 use Psr\Http\Message\ResponseInterface;
-use think\App;
+use Psr\Http\Message\ServerRequestInterface;
+use RuntimeException;
+use Throwable;
 use Workerman\Worker;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request as WorkermanRequest;
 use Workerman\Protocols\Http\Response as WorkermanResponse;
 use Workerman\Timer;
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
@@ -140,7 +141,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('Workerman is not installed');
+            throw new RuntimeException('Workerman is not installed');
         }
 
         $config = array_merge($this->defaultConfig, $this->config);
@@ -185,7 +186,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     public function start(array $options = []): void
     {
         if (!$this->worker) {
-            throw new \RuntimeException('Worker not initialized. Call boot() first.');
+            throw new RuntimeException('Worker not initialized. Call boot() first.');
         }
 
         // 合并启动选项
@@ -307,7 +308,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
             echo "Worker #{$worker->id} started\n";
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             echo "Worker #{$worker->id} start failed: " . $e->getMessage() . "\n";
         }
     }
@@ -349,7 +350,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             // 记录请求指标
             $this->logRequestMetrics($request, $startTime);
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->handleWorkermanError($connection, $e);
         } finally {
             // 清理连接上下文
@@ -561,8 +562,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $realPublicPath = realpath($publicPath);
 
         return $realFilePath &&
-               $realPublicPath &&
-               strpos($realFilePath, $realPublicPath) === 0 &&
+               $realPublicPath && str_starts_with($realFilePath, $realPublicPath) &&
                is_file($realFilePath);
     }
 
@@ -598,9 +598,9 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      * 将 Workerman 请求转换为 PSR-7 请求
      *
      * @param WorkermanRequest $request
-     * @return \Psr\Http\Message\ServerRequestInterface
+     * @return ServerRequestInterface
      */
-    protected function convertWorkermanRequestToPsr7(WorkermanRequest $request): \Psr\Http\Message\ServerRequestInterface
+    protected function convertWorkermanRequestToPsr7(WorkermanRequest $request): ServerRequestInterface
     {
         // 使用复用的工厂实例
         if (!$this->requestCreator) {
@@ -693,10 +693,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      * 处理 Workerman 连接错误
      *
      * @param TcpConnection $connection
-     * @param \Throwable $e
+     * @param Throwable $e
      * @return void
      */
-    protected function handleWorkermanError(TcpConnection $connection, \Throwable $e): void
+    protected function handleWorkermanError(TcpConnection $connection, Throwable $e): void
     {
         $response = new WorkermanResponse(500);
         $response->header('Content-Type', 'application/json');

@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
+use ErrorException;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RuntimeException;
+use Swoole\Coroutine;
+use Swoole\Runtime;
 use Swoole\Http\Server;
 use Swoole\Http\Request as SwooleRequest;
 use Swoole\Http\Response as SwooleResponse;
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -140,18 +145,19 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * 启动适配器
      *
      * @return void
+     * @throws ErrorException
      */
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('Swoole extension is not installed');
+            throw new RuntimeException('Swoole extension is not installed');
         }
 
         $config = array_merge($this->defaultConfig, $this->config);
 
         // 设置协程 Hook
         if (isset($config['settings']['hook_flags']) && class_exists('\Swoole\Runtime')) {
-            \Swoole\Runtime::enableCoroutine($config['settings']['hook_flags']);
+            Runtime::enableCoroutine($config['settings']['hook_flags']);
         }
 
         // 初始化请求创建器（复用实例）
@@ -219,6 +225,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * 运行适配器
      *
      * @return void
+     * @throws ErrorException
      */
     public function run(): void
     {
@@ -245,6 +252,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @param array $options 启动选项
      * @return void
+     * @throws ErrorException
      */
     public function start(array $options = []): void
     {
@@ -436,7 +444,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                         // 恢复错误报告
                         error_reporting($oldErrorReporting);
 
-                    } catch (\Throwable $e) {
+                    } catch (Throwable $e) {
                         echo "Worker #{$workerId} app initialization failed: " . $e->getMessage() . "\n";
                         // 不抛出异常，让进程继续运行
                     }
@@ -446,7 +454,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                 echo "Task Worker #{$workerId} started\n";
             }
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             echo "Worker #{$workerId} start failed: " . $e->getMessage() . "\n";
             // 不抛出异常，让进程继续运行
         }
@@ -487,7 +495,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                 // 记录请求指标
                 $this->logRequestMetrics($request, $startTime);
 
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $this->handleSwooleError($response, $e);
             } finally {
                 // 清理协程上下文
@@ -571,9 +579,9 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * @param int $taskId Task ID
      * @param int $reactorId Reactor ID
      * @param mixed $data Task数据
-     * @return mixed
+     * @return string
      */
-    public function onTask(Server $server, int $taskId, int $reactorId, $data)
+    public function onTask(Server $server, int $taskId, int $reactorId, mixed $data): string
     {
         // 默认的Task处理逻辑
         return "Task {$taskId} completed";
@@ -587,7 +595,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $data Task返回数据
      * @return void
      */
-    public function onFinish(Server $server, int $taskId, $data): void
+    public function onFinish(Server $server, int $taskId, mixed $data): void
     {
         // 默认的Finish处理逻辑
         echo "Task {$taskId} finished with result: {$data}\n";
@@ -597,9 +605,9 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * 将Swoole请求转换为PSR-7请求（优化版）
      *
      * @param SwooleRequest $request Swoole请求
-     * @return \Psr\Http\Message\ServerRequestInterface PSR-7请求
+     * @return ServerRequestInterface PSR-7请求
      */
-    protected function convertSwooleRequestToPsr7(SwooleRequest $request): \Psr\Http\Message\ServerRequestInterface
+    protected function convertSwooleRequestToPsr7(SwooleRequest $request): ServerRequestInterface
     {
         // 使用复用的工厂实例
         if (!$this->requestCreator) {
@@ -637,10 +645,10 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * 发送Swoole响应
      *
      * @param SwooleResponse $swooleResponse Swoole响应对象
-     * @param \Psr\Http\Message\ResponseInterface $psr7Response PSR-7响应对象
+     * @param ResponseInterface $psr7Response PSR-7响应对象
      * @return void
      */
-    protected function sendSwooleResponse(SwooleResponse $swooleResponse, \Psr\Http\Message\ResponseInterface $psr7Response): void
+    protected function sendSwooleResponse(SwooleResponse $swooleResponse, ResponseInterface $psr7Response): void
     {
         // 设置状态码
         $swooleResponse->status($psr7Response->getStatusCode());
@@ -658,10 +666,10 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
      * 处理Swoole错误
      *
      * @param SwooleResponse $response Swoole响应对象
-     * @param \Throwable $e 异常
+     * @param Throwable $e 异常
      * @return void
      */
-    protected function handleSwooleError(SwooleResponse $response, \Throwable $e): void
+    protected function handleSwooleError(SwooleResponse $response, Throwable $e): void
     {
         $response->status(500);
         $response->header('Content-Type', 'application/json');
@@ -682,7 +690,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     protected function setCoroutineContext(SwooleRequest $request, float $startTime): void
     {
         if (class_exists('\Swoole\Coroutine')) {
-            $cid = \Swoole\Coroutine::getCid();
+            $cid = Coroutine::getCid();
             $this->coroutineContext[$cid] = [
                 'request_id' => uniqid(),
                 'start_time' => $startTime,
@@ -699,7 +707,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     protected function clearCoroutineContext(): void
     {
         if (class_exists('\Swoole\Coroutine')) {
-            $cid = \Swoole\Coroutine::getCid();
+            $cid = Coroutine::getCid();
             unset($this->coroutineContext[$cid]);
         }
     }

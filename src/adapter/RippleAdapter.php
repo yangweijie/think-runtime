@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
+use Fiber;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
+use Ripple\Http\Server;
+use RuntimeException;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -22,7 +26,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @var object|null
      */
-    protected $server = null;
+    protected ?object $server = null;
 
     /**
      * 协程池
@@ -74,7 +78,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('Ripple is not available');
+            throw new RuntimeException('Ripple is not available');
         }
 
         // 初始化应用
@@ -212,7 +216,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
         
         // 根据不同的Ripple版本创建服务器
         if (class_exists('Ripple\\Http\\Server')) {
-            $this->server = new \Ripple\Http\Server([
+            $this->server = new Server([
                 'host' => $config['host'],
                 'port' => $config['port'],
                 'worker_num' => $config['worker_num'],
@@ -279,7 +283,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    public function handleRippleRequest($request, $response): void
+    public function handleRippleRequest(mixed $request, mixed $response): void
     {
         try {
             // 创建协程处理请求
@@ -288,7 +292,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
             } else {
                 $this->handleRequestSync($request, $response);
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->handleRippleError($e, $response);
         }
     }
@@ -299,12 +303,13 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $request Ripple请求对象
      * @param mixed $response Ripple响应对象
      * @return void
+     * @throws Throwable
      */
-    protected function handleRequestInCoroutine($request, $response): void
+    protected function handleRequestInCoroutine(mixed $request, mixed $response): void
     {
         // 使用Fiber处理请求
         if (class_exists('Fiber')) {
-            $fiber = new \Fiber(function () use ($request, $response) {
+            $fiber = new Fiber(function () use ($request, $response) {
                 $this->processRequest($request, $response);
             });
             $fiber->start();
@@ -321,7 +326,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function handleRequestSync($request, $response): void
+    protected function handleRequestSync(mixed $request, mixed $response): void
     {
         $this->processRequest($request, $response);
     }
@@ -333,10 +338,10 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function processRequest($request, $response): void
+    protected function processRequest(mixed $request, mixed $response): void
     {
         // 转换为PSR-7请求
-        $psr7Request = $this->convertRippleRequestToPsr7($request);
+        $psr7Request = $this->convertRippleRequestToPsr7();
         
         // 处理请求
         $psr7Response = $this->handleRequest($psr7Request);
@@ -348,10 +353,9 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 将Ripple请求转换为PSR-7请求
      *
-     * @param mixed $request Ripple请求对象
      * @return ServerRequestInterface PSR-7请求
      */
-    protected function convertRippleRequestToPsr7($request): ServerRequestInterface
+    protected function convertRippleRequestToPsr7(): ServerRequestInterface
     {
         // 这里需要根据实际的Ripple请求对象结构进行转换
         // 由于Ripple可能有不同的API，这里提供一个通用的实现
@@ -371,11 +375,11 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 发送Ripple响应
      *
-     * @param \Psr\Http\Message\ResponseInterface $psr7Response PSR-7响应
+     * @param ResponseInterface $psr7Response PSR-7响应
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function sendRippleResponse(\Psr\Http\Message\ResponseInterface $psr7Response, $response): void
+    protected function sendRippleResponse(ResponseInterface $psr7Response, mixed $response): void
     {
         // 设置状态码
         if (method_exists($response, 'status')) {
@@ -402,11 +406,11 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 处理Ripple错误
      *
-     * @param \Throwable $e 异常
+     * @param Throwable $e 异常
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function handleRippleError(\Throwable $e, $response): void
+    protected function handleRippleError(Throwable $e, mixed $response): void
     {
         $content = json_encode([
             'error' => true,
@@ -434,11 +438,12 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @param callable $callback 协程回调函数
      * @return mixed 协程ID或对象
+     * @throws Throwable
      */
-    public function createCoroutine(callable $callback)
+    public function createCoroutine(callable $callback): mixed
     {
         if (class_exists('Fiber')) {
-            $fiber = new \Fiber($callback);
+            $fiber = new Fiber($callback);
             $this->coroutinePool[] = $fiber;
             return $fiber->start();
         } elseif (function_exists('go')) {
@@ -459,7 +464,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
         return [
             'total' => count($this->coroutinePool),
             'active' => count(array_filter($this->coroutinePool, function ($fiber) {
-                return $fiber instanceof \Fiber && !$fiber->isTerminated();
+                return $fiber instanceof Fiber && !$fiber->isTerminated();
             })),
         ];
     }

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Nyholm\Psr7\Factory\Psr17Factory;
-use Nyholm\Psr7\Response as Psr7Response;
+use RuntimeException;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -80,7 +80,7 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('Vercel runtime is not available');
+            throw new RuntimeException('Vercel runtime is not available');
         }
 
         $config = $this->getConfig();
@@ -284,7 +284,7 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
         $headers = [];
         
         foreach ($_SERVER as $key => $value) {
-            if (strpos($key, 'HTTP_') === 0) {
+            if (str_starts_with($key, 'HTTP_')) {
                 $headerName = str_replace('_', '-', substr($key, 5));
                 $headers[strtolower($headerName)] = $value;
             }
@@ -324,7 +324,7 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
             // 记录请求指标
             $this->logRequestMetrics($this->vercelRequest, $startTime);
             
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->handleVercelError($e);
         }
     }
@@ -351,7 +351,7 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
     protected function convertVercelRequestToPsr7(?array $request): ServerRequestInterface
     {
         if (!$request) {
-            throw new \RuntimeException('No Vercel request data available');
+            throw new RuntimeException('No Vercel request data available');
         }
 
         $factory = new Psr17Factory();
@@ -386,12 +386,12 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
             if ($method === 'POST' && isset($headers['content-type'])) {
                 $contentType = $headers['content-type'];
 
-                if (strpos($contentType, 'application/json') !== false) {
+                if (str_contains($contentType, 'application/json')) {
                     $jsonData = json_decode($body, true);
                     if (is_array($jsonData)) {
                         $psr7Request = $psr7Request->withParsedBody($jsonData);
                     }
-                } elseif (strpos($contentType, 'application/x-www-form-urlencoded') !== false) {
+                } elseif (str_contains($contentType, 'application/x-www-form-urlencoded')) {
                     parse_str($body, $formData);
                     $psr7Request = $psr7Request->withParsedBody($formData);
                 }
@@ -439,16 +439,16 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
         }
 
         // 输出响应体
-        echo (string) $response->getBody();
+        echo $response->getBody();
     }
 
     /**
      * 处理Vercel错误
      *
-     * @param \Throwable $e
+     * @param Throwable $e
      * @return void
      */
-    protected function handleVercelError(\Throwable $e): void
+    protected function handleVercelError(Throwable $e): void
     {
         $config = array_merge($this->defaultConfig, $this->config);
 

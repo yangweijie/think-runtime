@@ -6,6 +6,8 @@ namespace yangweijie\thinkRuntime\service;
 
 use think\Service;
 use think\App;
+use yangweijie\thinkRuntime\command\RuntimeInfoCommand;
+use yangweijie\thinkRuntime\command\RuntimeStartCommand;
 use yangweijie\thinkRuntime\config\RuntimeConfig;
 use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
@@ -62,8 +64,8 @@ class RuntimeService extends Service
     protected function registerCommands(): void
     {
         $this->commands([
-            \yangweijie\thinkRuntime\command\RuntimeStartCommand::class,
-            \yangweijie\thinkRuntime\command\RuntimeInfoCommand::class,
+            RuntimeStartCommand::class,
+            RuntimeInfoCommand::class,
         ]);
     }
 

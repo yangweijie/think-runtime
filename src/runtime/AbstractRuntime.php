@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\runtime;
 
+use ReflectionClass;
 use think\App;
+use think\facade\Debug;
+use think\facade\Log;
+use think\facade\Trace;
 use think\Request;
 use think\Response;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response as Psr7Response;
+use Throwable;
 use yangweijie\thinkRuntime\contract\RuntimeInterface;
 
 /**
@@ -43,7 +48,6 @@ abstract class AbstractRuntime implements RuntimeInterface
     /**
      * 构造函数
      *
-     * @param App|object $app ThinkPHP应用实例
      * @param array $config 配置数组
      */
     public function __construct($app, array $config = [])
@@ -77,7 +81,7 @@ abstract class AbstractRuntime implements RuntimeInterface
             // 将ThinkPHP响应转换为PSR-7响应
             return $this->convertThinkResponseToPsr7($thinkResponse);
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // 错误处理
             return $this->handleError($e);
         }
@@ -194,7 +198,7 @@ abstract class AbstractRuntime implements RuntimeInterface
         $body = (string) $request->getBody();
         if (!empty($body)) {
             // 对于JSON请求，可能需要特殊处理
-            if (strpos($headers['content-type'] ?? '', 'application/json') !== false) {
+            if (str_contains($headers['content-type'] ?? '', 'application/json')) {
                 $jsonData = json_decode($body, true);
                 if (is_array($jsonData)) {
                     $_POST = array_merge($_POST, $jsonData);
@@ -213,22 +217,20 @@ abstract class AbstractRuntime implements RuntimeInterface
      */
     protected function convertThinkResponseToPsr7(Response $response): ResponseInterface
     {
-        $psr7Response = new Psr7Response(
+        return new Psr7Response(
             $response->getCode(),
             $response->getHeader(),
             $response->getContent()
         );
-
-        return $psr7Response;
     }
 
     /**
      * 处理错误
      *
-     * @param \Throwable $e 异常
+     * @param Throwable $e 异常
      * @return ResponseInterface PSR-7响应
      */
-    protected function handleError(\Throwable $e): ResponseInterface
+    protected function handleError(Throwable $e): ResponseInterface
     {
         $content = json_encode([
             'error' => true,
@@ -278,7 +280,7 @@ abstract class AbstractRuntime implements RuntimeInterface
 
         // 清理所有HTTP_*头信息和请求相关变量
         foreach ($_SERVER as $key => $value) {
-            if (strpos($key, 'HTTP_') === 0 ||
+            if (str_starts_with($key, 'HTTP_') ||
                 in_array($key, ['REQUEST_METHOD', 'REQUEST_URI', 'QUERY_STRING', 'CONTENT_TYPE', 'CONTENT_LENGTH'])) {
                 unset($_SERVER[$key]);
             }
@@ -327,11 +329,11 @@ abstract class AbstractRuntime implements RuntimeInterface
         if (class_exists('\think\facade\Debug')) {
             // 尝试重置 Debug facade 的状态
             try {
-                $debugClass = new \ReflectionClass('\think\facade\Debug');
+                $debugClass = new ReflectionClass('\think\facade\Debug');
                 if ($debugClass->hasMethod('clear')) {
-                    \think\facade\Debug::clear();
+                    Debug::clear();
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // 忽略错误
             }
         }
@@ -339,11 +341,11 @@ abstract class AbstractRuntime implements RuntimeInterface
         // 重置 Trace 相关状态
         if (class_exists('\think\facade\Trace')) {
             try {
-                $traceClass = new \ReflectionClass('\think\facade\Trace');
+                $traceClass = new ReflectionClass('\think\facade\Trace');
                 if ($traceClass->hasMethod('clear')) {
-                    \think\facade\Trace::clear();
+                    Trace::clear();
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // 忽略错误
             }
         }
@@ -351,11 +353,11 @@ abstract class AbstractRuntime implements RuntimeInterface
         // 重置日志状态
         if (class_exists('\think\facade\Log')) {
             try {
-                $logClass = new \ReflectionClass('\think\facade\Log');
+                $logClass = new ReflectionClass('\think\facade\Log');
                 if ($logClass->hasMethod('clear')) {
-                    \think\facade\Log::clear();
+                    Log::clear();
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // 忽略错误
             }
         }
@@ -376,7 +378,7 @@ abstract class AbstractRuntime implements RuntimeInterface
                         !str_starts_with($abstract, 'app\\')) {
                         try {
                             $container->delete($abstract);
-                        } catch (\Throwable $e) {
+                        } catch (Throwable $e) {
                             // 忽略删除错误
                         }
                     }
@@ -411,17 +413,17 @@ abstract class AbstractRuntime implements RuntimeInterface
         foreach ($debugClasses as $className) {
             if (class_exists($className)) {
                 try {
-                    $reflection = new \ReflectionClass($className);
+                    $reflection = new ReflectionClass($className);
                     $properties = $reflection->getStaticProperties();
 
                     foreach ($properties as $name => $value) {
                         // 重置可能的时间统计变量
-                        if (strpos($name, 'time') !== false ||
-                            strpos($name, 'start') !== false ||
-                            strpos($name, 'end') !== false ||
-                            strpos($name, 'log') !== false ||
-                            strpos($name, 'trace') !== false ||
-                            strpos($name, 'debug') !== false) {
+                        if (str_contains($name, 'time') ||
+                            str_contains($name, 'start') ||
+                            str_contains($name, 'end') ||
+                            str_contains($name, 'log') ||
+                            str_contains($name, 'trace') ||
+                            str_contains($name, 'debug')) {
 
                             $property = $reflection->getProperty($name);
                             if ($property->isStatic() && $property->isPublic()) {
@@ -437,20 +439,17 @@ abstract class AbstractRuntime implements RuntimeInterface
                             }
                         }
                     }
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     // 忽略反射错误
                 }
             }
         }
 
         // 重置 REQUEST_TIME 相关常量
+        $_SERVER['REQUEST_TIME'] = time();
+        $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
         if (!defined('REQUEST_TIME_RESET')) {
-            $_SERVER['REQUEST_TIME'] = time();
-            $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
             define('REQUEST_TIME_RESET', true);
-        } else {
-            $_SERVER['REQUEST_TIME'] = time();
-            $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
         }
     }
 
@@ -476,7 +475,7 @@ abstract class AbstractRuntime implements RuntimeInterface
         foreach ($traceClasses as $className) {
             if (class_exists($className)) {
                 try {
-                    $reflection = new \ReflectionClass($className);
+                    $reflection = new ReflectionClass($className);
 
                     // 重置静态属性
                     $staticProperties = $reflection->getStaticProperties();
@@ -484,13 +483,13 @@ abstract class AbstractRuntime implements RuntimeInterface
                         $property = $reflection->getProperty($propertyName);
                         if ($property->isStatic()) {
                             // 重置可能的时间相关属性
-                            if (strpos($propertyName, 'time') !== false ||
-                                strpos($propertyName, 'start') !== false ||
-                                strpos($propertyName, 'end') !== false ||
-                                strpos($propertyName, 'trace') !== false ||
-                                strpos($propertyName, 'log') !== false ||
-                                strpos($propertyName, 'debug') !== false ||
-                                strpos($propertyName, 'info') !== false) {
+                            if (str_contains($propertyName, 'time') ||
+                                str_contains($propertyName, 'start') ||
+                                str_contains($propertyName, 'end') ||
+                                str_contains($propertyName, 'trace') ||
+                                str_contains($propertyName, 'log') ||
+                                str_contains($propertyName, 'debug') ||
+                                str_contains($propertyName, 'info')) {
 
                                 $property->setAccessible(true);
                                 if (is_array($value)) {
@@ -520,7 +519,7 @@ abstract class AbstractRuntime implements RuntimeInterface
                         }
                     }
 
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     // 忽略反射错误，继续处理其他类
                 }
             }
@@ -573,7 +572,7 @@ abstract class AbstractRuntime implements RuntimeInterface
                     } elseif (method_exists($instance, 'reset')) {
                         $instance->reset();
                     }
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     // 忽略错误
                 }
             }

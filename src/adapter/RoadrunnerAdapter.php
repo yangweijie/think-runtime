@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
+use JsonException;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RuntimeException;
 use Spiral\RoadRunner\Worker;
 use Spiral\RoadRunner\Http\PSR7Worker;
 use Nyholm\Psr7\Factory\Psr17Factory;
+use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -59,7 +63,7 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('RoadRunner is not available');
+            throw new RuntimeException('RoadRunner is not available');
         }
 
         $config = array_merge($this->defaultConfig, $this->config);
@@ -84,6 +88,7 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
      * 运行适配器
      *
      * @return void
+     * @throws JsonException
      */
     public function run(): void
     {
@@ -96,9 +101,6 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
         // 处理请求循环
         while ($request = $this->psr7Worker->waitRequest()) {
             try {
-                if ($request === null) {
-                    break;
-                }
 
                 // 处理请求
                 $response = $this->handleRequest($request);
@@ -106,7 +108,7 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
                 // 发送响应
                 $this->psr7Worker->respond($response);
 
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // 发送错误响应
                 $errorResponse = $this->handleError($e);
                 $this->psr7Worker->respond($errorResponse);
@@ -122,6 +124,7 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @param array $options 启动选项
      * @return void
+     * @throws JsonException
      */
     public function start(array $options = []): void
     {
@@ -206,10 +209,10 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 处理RoadRunner请求
      *
-     * @param \Psr\Http\Message\ServerRequestInterface $request PSR-7请求
-     * @return \Psr\Http\Message\ResponseInterface PSR-7响应
+     * @param ServerRequestInterface $request PSR-7请求
+     * @return ResponseInterface PSR-7响应
      */
-    public function handleRoadRunnerRequest(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+    public function handleRoadRunnerRequest(ServerRequestInterface $request): ResponseInterface
     {
         return $this->handleRequest($request);
     }
@@ -245,10 +248,10 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
     /**
      * 记录错误
      *
-     * @param \Throwable $e 异常
+     * @param Throwable $e 异常
      * @return void
      */
-    protected function logError(\Throwable $e): void
+    protected function logError(Throwable $e): void
     {
         $message = sprintf(
             "RoadRunner Error: %s in %s:%d\nStack trace:\n%s",

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace yangweijie\thinkRuntime\adapter;
 
-use think\App;
+use RuntimeException;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
@@ -41,7 +41,7 @@ class FpmAdapter extends AbstractRuntime implements AdapterInterface
     public function boot(): void
     {
         if (!$this->isSupported()) {
-            throw new \RuntimeException('FPM is not available');
+            throw new RuntimeException('FPM is not available');
         }
 
         // 初始化应用
