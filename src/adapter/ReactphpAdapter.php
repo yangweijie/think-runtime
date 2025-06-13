@@ -267,8 +267,25 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     public function handleReactRequest(ServerRequestInterface $request): PromiseInterface
     {
         try {
+            // 在每次请求前创建新的应用实例
+            $appClass = get_class($this->app);
+            $newApp = new $appClass();
+            
+            // 初始化新的应用实例
+            if (method_exists($newApp, 'initialize')) {
+                $newApp->initialize();
+            }
+            
+            // 临时保存原应用实例
+            $originalApp = $this->app;
+            // 设置新的应用实例
+            $this->app = $newApp;
+            
             // 处理请求
             $response = $this->handleRequest($request);
+            
+            // 恢复原应用实例
+            $this->app = $originalApp;
 
             // 返回ReactPHP Response
             return resolve(
