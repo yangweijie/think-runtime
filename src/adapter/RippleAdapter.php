@@ -305,20 +305,22 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     public function handleRippleRequest(mixed $request): void
     {
     try {
-        echo "Processing request...\n";
+        echo "Processing request through ThinkPHP...\n";
         
-        // 简单响应测试
-        if (method_exists($request, 'respond')) {
-            $request->respond('Hello from ThinkPHP + Ripple!');
-        }
+        // 转换为PSR-7请求
+        $psr7Request = $this->convertRippleRequestToPsr7($request);
+        
+        // 通过 ThinkPHP 完整流程处理请求（包括中间件、trace等）
+        $psr7Response = $this->handleRequest($psr7Request);
+        
+        // 发送响应
+        $this->sendRippleResponse($psr7Response, $request);
+        
     } catch (Throwable $e) {
         echo "Error: " . $e->getMessage() . "\n";
-        if (method_exists($request, 'respond')) {
-            $request->respond('Error: ' . $e->getMessage());
-        }
+        $this->handleRippleError($e, $request);
     }
-}
-    /**
+}    /**
      * 在协程中处理请求
      *
      * @param mixed $request Ripple请求对象
@@ -368,7 +370,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
         $psr7Response = $this->handleRequest($psr7Request);
         
         // 发送响应
-        $this->sendRippleResponse($psr7Response, $response);
+        $this->sendRippleResponse($psr7Response, $request);
     }
 
     /**
@@ -400,30 +402,28 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function sendRippleResponse(ResponseInterface $psr7Response, mixed $response): void
+    protected function sendRippleResponse(ResponseInterface $psr7Response, mixed $request): void
     {
-        // 设置状态码
-        if (method_exists($response, 'status')) {
-            $response->status($psr7Response->getStatusCode());
+    // 使用 Ripple Request 的 respond 方法发送响应
+    if (method_exists($request, 'respond')) {
+        // 构建完整的 HTTP 响应
+        $statusCode = $psr7Response->getStatusCode();
+        $headers = [];
+        
+        // 收集响应头
+        foreach ($psr7Response->getHeaders() as $name => $values) {
+            $headers[$name] = implode(', ', $values);
         }
         
-        // 设置响应头
-        if (method_exists($response, 'header')) {
-            foreach ($psr7Response->getHeaders() as $name => $values) {
-                foreach ($values as $value) {
-                    $response->header((string) $name, $value);
-                }
-            }
-        }
         
-        // 发送响应体
-        if (method_exists($response, 'end')) {
-            $response->end((string) $psr7Response->getBody());
-        } elseif (method_exists($response, 'write')) {
-            $response->write((string) $psr7Response->getBody());
-        }
+        $body = (string) $psr7Response->getBody();
+        // 发送响应，包含正确的状态码和响应头（特别是 Content-Type）
+        $request->respond($body, $headers, $statusCode);
+        
+        echo "Response sent with headers: " . json_encode($headers) . "\n";
     }
-
+        
+}
     /**
      * 处理Ripple错误
      *
@@ -431,7 +431,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function handleRippleError(Throwable $e, mixed $response): void
+    protected function handleRippleError(Throwable $e, mixed $request): void
     {
         $content = json_encode([
             'error' => true,
@@ -440,20 +440,10 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
             'file' => $e->getFile(),
             'line' => $e->getLine(),
         ], JSON_UNESCAPED_UNICODE);
-        
-        if (method_exists($response, 'status')) {
-            $response->status(500);
-        }
-        
-        if (method_exists($response, 'header')) {
-            $response->header('Content-Type', 'application/json');
-        }
-        
-        if (method_exists($response, 'end')) {
-            $response->end($content);
-        }
+    if (method_exists($request, 'respond')) {
+        $request->respond($content);
     }
-
+}
     /**
      * 创建协程
      *
