@@ -125,7 +125,7 @@ class RuntimeConfig
             'display_errors' => false,
             'log_errors' => true,
             'memory_limit' => '256M',
-            'max_execution_time' => 30,
+            'max_execution_time' => 0,
         ],
     ];
 

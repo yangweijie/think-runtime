@@ -124,6 +124,9 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     public function start(array $options = []): void
     {
         $this->setConfig($options);
+
+    // 设置无限执行时间，Ripple服务器需要持续运行
+    set_time_limit(0);
         $this->run();
     }
 
@@ -269,6 +272,9 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      */
     protected function startRippleServer(): void
     {
+    // 设置无限执行时间，因为Ripple服务器需要持续运行
+    set_time_limit(0);
+    ini_set('memory_limit', '512M');
         if ($this->server !== null) {
             echo "Setting up Ripple server...\n";
             
@@ -307,6 +313,25 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     try {
         echo "Processing request through ThinkPHP...\n";
         
+        // 在每次请求前创建新的应用实例（像 ReactPHP 适配器一样）
+        $appClass = get_class($this->app);
+        $newApp = new $appClass();
+        
+        // 初始化新的应用实例
+        if (method_exists($newApp, 'initialize')) {
+            $newApp->initialize();
+        }
+        
+        // 临时保存原应用实例
+        $originalApp = $this->app;
+        // 设置新的应用实例
+        $this->app = $newApp;
+        
+        echo "Created new app instance: " . $appClass . "\n";
+
+        // 确保新应用实例也设置无限执行时间
+        set_time_limit(0);
+        
         // 转换为PSR-7请求
         $psr7Request = $this->convertRippleRequestToPsr7($request);
         
@@ -316,11 +341,21 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
         // 发送响应
         $this->sendRippleResponse($psr7Response, $request);
         
+        // 恢复原应用实例
+        $this->app = $originalApp;
+        
+        echo "Restored original app instance\n";
+        
     } catch (Throwable $e) {
+        // 确保在异常情况下也恢复原应用实例
+        if (isset($originalApp)) {
+            $this->app = $originalApp;
+        }
         echo "Error: " . $e->getMessage() . "\n";
         $this->handleRippleError($e, $request);
     }
-}    /**
+}
+    /**
      * 在协程中处理请求
      *
      * @param mixed $request Ripple请求对象
@@ -364,13 +399,13 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     protected function processRequest(mixed $request, mixed $response): void
     {
         // 转换为PSR-7请求
-        $psr7Request = $this->convertRippleRequestToPsr7();
+        $psr7Request = $this->convertRippleRequestToPsr7($request);
         
         // 处理请求
         $psr7Response = $this->handleRequest($psr7Request);
         
         // 发送响应
-        $this->sendRippleResponse($psr7Response, $request);
+        $this->sendRippleResponse($psr7Response, $response);
     }
 
     /**
@@ -378,21 +413,62 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      *
      * @return ServerRequestInterface PSR-7请求
      */
-    protected function convertRippleRequestToPsr7(): ServerRequestInterface
+    protected function convertRippleRequestToPsr7(mixed $request): ServerRequestInterface
     {
-        // 这里需要根据实际的Ripple请求对象结构进行转换
-        // 由于Ripple可能有不同的API，这里提供一个通用的实现
-        
-        $psr17Factory = new Psr17Factory();
-        $creator = new ServerRequestCreator(
-            $psr17Factory,
-            $psr17Factory,
-            $psr17Factory,
-            $psr17Factory
-        );
+    $psr17Factory = new Psr17Factory();
+    $creator = new ServerRequestCreator(
+        $psr17Factory,
+        $psr17Factory,
+        $psr17Factory,
+        $psr17Factory
+    );
 
-        // 从全局变量创建（作为���备方案）
-        return $creator->fromGlobals();
+    // 从 Ripple Request 对象创建 PSR-7 请求
+    if (isset($request->SERVER)) {
+        // 备份原始全局变量
+        $originalServer = $_SERVER;
+        $originalGet = $_GET ?? [];
+        $originalPost = $_POST ?? [];
+        $originalCookie = $_COOKIE ?? [];
+        $originalFiles = $_FILES ?? [];
+        
+        // 设置服务器变量
+        $_SERVER = array_merge($_SERVER, $request->SERVER);
+        
+        // 设置 GET 参数
+        if (isset($request->GET)) {
+            $_GET = $request->GET;
+        }
+        
+        // 设置 POST 参数
+        if (isset($request->POST)) {
+            $_POST = $request->POST;
+        }
+        
+        // 设置 COOKIE
+        if (isset($request->COOKIE)) {
+            $_COOKIE = $request->COOKIE;
+        }
+        
+        // 设置文件上传
+        if (isset($request->FILES)) {
+            $_FILES = $request->FILES;
+        }
+        
+        // 创建 PSR-7 请求
+        $psr7Request = $creator->fromGlobals();
+        
+        // 恢复原始全局变量（避免影响其他请求）
+        $_SERVER = $originalServer;
+        $_GET = $originalGet;
+        $_POST = $originalPost;
+        $_COOKIE = $originalCookie;
+        $_FILES = $originalFiles;
+        
+        return $psr7Request;
+    }
+
+    return $creator->fromGlobals();
     }
 
     /**
@@ -415,14 +491,13 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
             $headers[$name] = implode(', ', $values);
         }
         
-        
         $body = (string) $psr7Response->getBody();
+        
         // 发送响应，包含正确的状态码和响应头（特别是 Content-Type）
         $request->respond($body, $headers, $statusCode);
         
         echo "Response sent with headers: " . json_encode($headers) . "\n";
     }
-        
 }
     /**
      * 处理Ripple错误
@@ -431,7 +506,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    protected function handleRippleError(Throwable $e, mixed $request): void
+    protected function handleRippleError(Throwable $e, mixed $response): void
     {
         $content = json_encode([
             'error' => true,
@@ -440,10 +515,20 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
             'file' => $e->getFile(),
             'line' => $e->getLine(),
         ], JSON_UNESCAPED_UNICODE);
-    if (method_exists($request, 'respond')) {
-        $request->respond($content);
+        
+        if (method_exists($response, 'status')) {
+            $response->status(500);
+        }
+        
+        if (method_exists($response, 'header')) {
+            $response->header('Content-Type', 'application/json');
+        }
+        
+        if (method_exists($response, 'end')) {
+            $response->end($content);
+        }
     }
-}
+
     /**
      * 创建协程
      *
