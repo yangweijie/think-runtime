@@ -15,8 +15,6 @@ use Throwable;
 use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
-use function Co\wait;
-
 /**
  * Ripple适配器
  * 提供基于PHP Fiber的高性能协程HTTP服务器支持
@@ -269,29 +267,8 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      */
     protected function startRippleServer(): void
     {
-        if ($this->server !== null) {
-            echo "Setting up Ripple server...\n";
-            
-            // 设置请求处理器
-            if (method_exists($this->server, 'onRequest')) {
-                echo "Setting onRequest handler...\n";
-                $this->server->onRequest(function($request) {
-                    echo "Received request: " . ($request->SERVER['REQUEST_URI'] ?? '/') . "\n";
-                    $this->handleRippleRequest($request);
-                });
-            }
-            
-            // 启动服务器监听
-            if (method_exists($this->server, 'listen')) {
-                echo "Starting server listen...\n";
-                $this->server->listen();
-                
-                // 保持事件循环运行
-                if (function_exists('Co\\wait')) {
-                    echo "Calling wait()...\n";
-                    wait();
-                }
-            }
+        if ($this->server !== null && method_exists($this->server, 'start')) {
+            $this->server->start();
         }
     }
 
@@ -302,22 +279,20 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      * @param mixed $response Ripple响应对象
      * @return void
      */
-    public function handleRippleRequest(mixed $request): void
+    public function handleRippleRequest(mixed $request, mixed $response): void
     {
-    try {
-        echo "Processing request...\n";
-        
-        // 简单响应测试
-        if (method_exists($request, 'respond')) {
-            $request->respond('Hello from ThinkPHP + Ripple!');
-        }
-    } catch (Throwable $e) {
-        echo "Error: " . $e->getMessage() . "\n";
-        if (method_exists($request, 'respond')) {
-            $request->respond('Error: ' . $e->getMessage());
+        try {
+            // 创建协程处理请求
+            if (function_exists('go') || class_exists('Fiber')) {
+                $this->handleRequestInCoroutine($request, $response);
+            } else {
+                $this->handleRequestSync($request, $response);
+            }
+        } catch (Throwable $e) {
+            $this->handleRippleError($e, $response);
         }
     }
-}
+
     /**
      * 在协程中处理请求
      *
