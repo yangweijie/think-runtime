@@ -38,9 +38,6 @@
 ```bash
 # 安装扩展包
 composer require yangweijie/think-runtime
-
-# 发布配置文件（可选）
-php think vendor:publish
 ```
 
 ### 故障排除
