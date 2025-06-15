@@ -155,7 +155,12 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         );
 
         // 创建 Worker 实例
-        $listen = $config['transport'] . '://' . $config['host'] . ':' . $config['port'];
+        // 根据协议类型构建正确的监听地址
+        if ($config['protocol'] === 'http') {
+            $listen = 'http://' . $config['host'] . ':' . $config['port'];
+        } else {
+            $listen = $config['transport'] . '://' . $config['host'] . ':' . $config['port'];
+        }
         $this->worker = new Worker($listen, $config['context']);
 
         // 设置 Worker 属性
@@ -165,7 +170,6 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $this->worker->group = $config['group'];
         $this->worker->reloadable = $config['reloadable'];
         $this->worker->reusePort = $config['reusePort'];
-        $this->worker->protocol = $config['protocol'];
 
         // 绑定事件
         $this->bindEvents();
@@ -186,7 +190,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     public function start(array $options = []): void
     {
         if (!$this->worker) {
-            throw new RuntimeException('Worker not initialized. Call boot() first.');
+            $this->boot();
         }
 
         // 合并启动选项
@@ -199,7 +203,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         echo "Worker processes: {$this->worker->count}\n";
         echo "Press Ctrl+C to stop the server\n\n";
 
-        // 启动 Workerman
+        // 设置Workerman作为库使用，避免命令行参数冲突
+    Worker::$command = 'start';
+
+    // 启动 Workerman
         Worker::runAll();
     }
 
@@ -342,10 +349,31 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
             // 处理动态请求
             $psr7Request = $this->convertWorkermanRequestToPsr7($request);
-            $psr7Response = $this->handleRequest($psr7Request);
-            $workermanResponse = $this->convertPsr7ToWorkermanResponse($psr7Response);
-            
-            $connection->send($workermanResponse);
+
+            // 在每次请求前创建新的应用实例
+            $appClass = get_class($this->app);
+            $newApp = new $appClass();
+
+            // 初始化新的应用实例
+            if (method_exists($newApp, 'initialize')) {
+                $newApp->initialize();
+            }
+
+            // 临时保存原应用实例
+            $originalApp = $this->app;
+            // 设置新的应用实例
+            $this->app = $newApp;
+
+            try {
+                // 处理请求
+                $psr7Response = $this->handleRequest($psr7Request);
+                $workermanResponse = $this->convertPsr7ToWorkermanResponse($psr7Response);
+
+                $connection->send($workermanResponse);
+            } finally {
+                // 恢复原应用实例
+                $this->app = $originalApp;
+            }
 
             // 记录请求指标
             $this->logRequestMetrics($request, $startTime);
