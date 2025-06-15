@@ -35,7 +35,7 @@ test('can detect best runtime', function () {
     $bestRuntime = reset($availableRuntimes); // 取第一个可用的运行时
 
     expect($bestRuntime)->toBeString();
-    expect($bestRuntime)->toBeIn(['fpm', 'swoole', 'frankenphp', 'reactphp', 'ripple', 'roadrunner']);
+    expect($bestRuntime)->toBeIn(['fpm', 'swoole', 'frankenphp', 'workerman', 'reactphp', 'ripple', 'roadrunner', 'bref', 'vercel']);
 });
 
 test('can get runtime by name', function () {

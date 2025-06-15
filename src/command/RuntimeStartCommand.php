@@ -15,7 +15,7 @@ class RuntimeStartCommand extends Command
     {
         $this->setName('runtime:start')
              ->setDescription('Start the runtime server')
-             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, ripple, roadrunner)')
+             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, workerman, reactphp, ripple, roadrunner, bref, vercel)')
              ->addOption('host', null, Option::VALUE_OPTIONAL, 'The host to listen on')
              ->addOption('port', null, Option::VALUE_OPTIONAL, 'The port to listen on')
              ->addOption('workers', null, Option::VALUE_OPTIONAL, 'The number of worker processes')
@@ -70,47 +70,116 @@ class RuntimeStartCommand extends Command
 
     protected function buildStartOptions(?string $runtime, array $options): array
     {
-        if ($runtime === 'frankenphp') {
-            if (isset($options['host']) && isset($options['port'])) {
-                $options['listen'] = $options['host'] . ':' . $options['port'];
-                unset($options['host'], $options['port']);
-            }
+        switch ($runtime) {
+            case 'frankenphp':
+                if (isset($options['host']) && isset($options['port'])) {
+                    $options['listen'] = $options['host'] . ':' . $options['port'];
+                    unset($options['host'], $options['port']);
+                }
 
-            if (isset($options['worker_num'])) {
-                $options['worker_num'] = (int) $options['worker_num'];
-            }
+                if (isset($options['worker_num'])) {
+                    $options['worker_num'] = (int) $options['worker_num'];
+                }
 
-            if (isset($options['debug'])) {
-                $options['debug'] = true;
-            }
-        } elseif ($runtime === 'reactphp') {
-            if (isset($options['worker_num'])) {
-                unset($options['worker_num']);
-            }
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
 
-            if (isset($options['debug'])) {
-                $options['debug'] = true;
-            }
-        } elseif ($runtime === 'ripple') {
-            if (isset($options['worker_num'])) {
-                $options['worker_num'] = (int) $options['worker_num'];
-            }
+            case 'reactphp':
+                if (isset($options['worker_num'])) {
+                    unset($options['worker_num']);
+                }
 
-            if (isset($options['debug'])) {
-                $options['debug'] = true;
-            }
-        } elseif ($runtime === 'roadrunner') {
-            if (isset($options['host']) || isset($options['port'])) {
-                unset($options['host'], $options['port']);
-            }
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
 
-            if (isset($options['worker_num'])) {
-                unset($options['worker_num']);
-            }
+            case 'ripple':
+                if (isset($options['worker_num'])) {
+                    $options['worker_num'] = (int) $options['worker_num'];
+                }
 
-            if (isset($options['debug'])) {
-                $options['debug'] = true;
-            }
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
+
+            case 'roadrunner':
+                if (isset($options['host']) || isset($options['port'])) {
+                    unset($options['host'], $options['port']);
+                }
+
+                if (isset($options['worker_num'])) {
+                    unset($options['worker_num']);
+                }
+
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
+
+            case 'workerman':
+                if (isset($options['worker_num'])) {
+                    $options['count'] = (int) $options['worker_num'];
+                    unset($options['worker_num']);
+                }
+
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
+
+            case 'bref':
+                // Bref运行在AWS Lambda环境中，移除不适用的选项
+                if (isset($options['host']) || isset($options['port'])) {
+                    unset($options['host'], $options['port']);
+                }
+
+                if (isset($options['worker_num'])) {
+                    unset($options['worker_num']);
+                }
+
+                if (isset($options['daemon'])) {
+                    unset($options['daemon']);
+                }
+
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
+
+            case 'vercel':
+                // Vercel运行在serverless环境中，移除不适用的选项
+                if (isset($options['host']) || isset($options['port'])) {
+                    unset($options['host'], $options['port']);
+                }
+
+                if (isset($options['worker_num'])) {
+                    unset($options['worker_num']);
+                }
+
+                if (isset($options['daemon'])) {
+                    unset($options['daemon']);
+                }
+
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
+
+            case 'swoole':
+            default:
+                // 对于swoole和其他runtime，保持默认行为
+                if (isset($options['worker_num'])) {
+                    $options['worker_num'] = (int) $options['worker_num'];
+                }
+
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
         }
 
         return $options;
@@ -124,33 +193,71 @@ class RuntimeStartCommand extends Command
         $output->writeln('<info>ThinkPHP Runtime Server started!</info>');
         $output->writeln('');
 
-        if ($runtimeName === 'swoole') {
-            $output->writeln('<comment>Mode: Swoole</comment>');
-            $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
-            $output->writeln('<comment>Port: ' . ($options['port'] ?? '9501') . '</comment>');
-            $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
-            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
-            $output->writeln('<comment>Daemon: ' . (($options['daemon'] ?? false) ? 'true' : 'false') . '</comment>');
-        } elseif ($runtimeName === 'frankenphp') {
-            $output->writeln('<comment>Mode: FrankenPHP</comment>');
-            $output->writeln('<comment>Listen: ' . ($options['listen'] ?? ':8080') . '</comment>');
-            $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
-            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
-        } elseif ($runtimeName === 'reactphp') {
-            $output->writeln('<comment>Mode: ReactPHP</comment>');
-            $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
-            $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
-            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
-        } elseif ($runtimeName === 'ripple') {
-            $output->writeln('<comment>Mode: Ripple</comment>');
-            $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
-            $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
-            $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
-            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
-        } elseif ($runtimeName === 'roadrunner') {
-            $output->writeln('<comment>Mode: RoadRunner</comment>');
-            $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
-            $output->writeln('<comment>Note: RoadRunner server must be started separately</comment>');
+        switch ($runtimeName) {
+            case 'swoole':
+                $output->writeln('<comment>Mode: Swoole</comment>');
+                $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+                $output->writeln('<comment>Port: ' . ($options['port'] ?? '9501') . '</comment>');
+                $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Daemon: ' . (($options['daemon'] ?? false) ? 'true' : 'false') . '</comment>');
+                break;
+
+            case 'frankenphp':
+                $output->writeln('<comment>Mode: FrankenPHP</comment>');
+                $output->writeln('<comment>Listen: ' . ($options['listen'] ?? ':8080') . '</comment>');
+                $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                break;
+
+            case 'workerman':
+                $output->writeln('<comment>Mode: Workerman</comment>');
+                $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+                $output->writeln('<comment>Workers: ' . ($options['count'] ?? '4') . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Daemon: ' . (($options['daemon'] ?? false) ? 'true' : 'false') . '</comment>');
+                break;
+
+            case 'reactphp':
+                $output->writeln('<comment>Mode: ReactPHP</comment>');
+                $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                break;
+
+            case 'ripple':
+                $output->writeln('<comment>Mode: Ripple</comment>');
+                $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+                $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                break;
+
+            case 'roadrunner':
+                $output->writeln('<comment>Mode: RoadRunner</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Note: RoadRunner server must be started separately</comment>');
+                break;
+
+            case 'bref':
+                $output->writeln('<comment>Mode: Bref (AWS Lambda)</comment>');
+                $output->writeln('<comment>Environment: Serverless</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Note: Running in AWS Lambda environment</comment>');
+                break;
+
+            case 'vercel':
+                $output->writeln('<comment>Mode: Vercel (Serverless Functions)</comment>');
+                $output->writeln('<comment>Environment: Serverless</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Note: Running in Vercel serverless environment</comment>');
+                break;
+
+            default:
+                $output->writeln('<comment>Mode: ' . ucfirst($runtimeName) . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                break;
         }
 
         $output->writeln('');

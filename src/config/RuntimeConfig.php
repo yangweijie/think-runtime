@@ -27,9 +27,12 @@ class RuntimeConfig
         'auto_detect_order' => [
             'swoole',
             'frankenphp',
+            'workerman',
             'reactphp',
             'ripple',
             'roadrunner',
+            'bref',
+            'vercel',
         ],
 
         // 运行时配置
@@ -116,6 +119,114 @@ class RuntimeConfig
                 'debug' => false,
                 'max_jobs' => 0,
                 'memory_limit' => '128M',
+            ],
+            'bref' => [
+                // Lambda运行时配置
+                'lambda' => [
+                    'timeout' => 30,
+                    'memory' => 512,
+                    'environment' => 'production',
+                ],
+                // HTTP处理配置
+                'http' => [
+                    'enable_cors' => true,
+                    'cors_origin' => '*',
+                    'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                    'cors_headers' => 'Content-Type, Authorization, X-Requested-With',
+                ],
+                // 错误处理配置
+                'error' => [
+                    'display_errors' => false,
+                    'log_errors' => true,
+                ],
+                // 性能监控配置
+                'monitor' => [
+                    'enable' => true,
+                    'slow_request_threshold' => 1000, // 毫秒
+                ],
+            ],
+            'vercel' => [
+                // Vercel函数配置
+                'vercel' => [
+                    'timeout' => 10, // Vercel默认超时10秒
+                    'memory' => 1024, // 默认内存1GB
+                    'region' => 'auto', // 自动选择区域
+                    'runtime' => 'php-8.1',
+                ],
+                // HTTP处理配置
+                'http' => [
+                    'enable_cors' => true,
+                    'cors_origin' => '*',
+                    'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                    'cors_headers' => 'Content-Type, Authorization, X-Requested-With',
+                    'max_body_size' => '5mb', // Vercel请求体限制
+                ],
+                // 错误处理配置
+                'error' => [
+                    'display_errors' => false,
+                    'log_errors' => true,
+                    'error_reporting' => E_ALL & ~E_NOTICE,
+                ],
+                // 性能监控配置
+                'monitor' => [
+                    'enable' => true,
+                    'slow_request_threshold' => 1000, // 毫秒
+                    'memory_threshold' => 80, // 内存使用阈值百分比
+                ],
+                // 静态文件配置
+                'static' => [
+                    'enable' => false, // Vercel通常由CDN处理静态文件
+                    'extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg'],
+                ],
+            ],
+            'workerman' => [
+                'host' => '0.0.0.0',
+                'port' => 8080,
+                'count' => 4,                    // 进程数
+                'name' => 'ThinkPHP-Workerman',  // 进程名称
+                'user' => '',                    // 运行用户
+                'group' => '',                   // 运行用户组
+                'reloadable' => true,            // 是否可重载
+                'reusePort' => false,            // 端口复用
+                'transport' => 'tcp',            // 传输协议
+                'context' => [],                 // Socket上下文选项
+                'protocol' => 'http',            // 应用层协议
+                // 静态文件配置
+                'static_file' => [
+                    'enable' => true,
+                    'document_root' => 'public',
+                    'cache_time' => 3600,
+                    'allowed_extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'html', 'htm', 'txt', 'json', 'xml'],
+                ],
+                // 性能监控配置
+                'monitor' => [
+                    'enable' => true,
+                    'slow_request_threshold' => 1000, // 毫秒
+                    'memory_limit' => '256M',
+                ],
+                // 中间件配置
+                'middleware' => [
+                    'cors' => [
+                        'enable' => true,
+                        'allow_origin' => '*',
+                        'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                        'allow_headers' => 'Content-Type, Authorization, X-Requested-With',
+                    ],
+                    'security' => [
+                        'enable' => true,
+                    ],
+                ],
+                // 日志配置
+                'log' => [
+                    'enable' => true,
+                    'file' => 'runtime/logs/workerman.log',
+                    'level' => 'info',
+                ],
+                // 定时器配置
+                'timer' => [
+                    'enable' => false,
+                    'interval' => 60, // 秒
+                ],
             ],
         ],
 

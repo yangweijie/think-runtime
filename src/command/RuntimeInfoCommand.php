@@ -59,6 +59,9 @@ class RuntimeInfoCommand extends Command
             'frankenphp' => [
                 'description' => 'Modern PHP application server',
             ],
+            'workerman' => [
+                'description' => 'High-performance PHP socket server framework',
+            ],
             'reactphp' => [
                 'description' => 'Event-driven, non-blocking I/O with PHP',
             ],
@@ -68,10 +71,16 @@ class RuntimeInfoCommand extends Command
             'roadrunner' => [
                 'description' => 'High-performance PHP application server, load balancer, and process manager',
             ],
+            'bref' => [
+                'description' => 'Serverless PHP runtime for AWS Lambda',
+            ],
+            'vercel' => [
+                'description' => 'Serverless PHP runtime for Vercel platform',
+            ],
         ];
 
         foreach ($runtimes as $name => $info) {
-            $available = isset($availableRuntimes[$name]) && $availableRuntimes[$name];
+            $available = in_array($name, $availableRuntimes);
             $status = $available ? '<fg=green>Available</>' : '<fg=red>Not Available</>';
             $output->writeln(sprintf('%-12s %s - %s', $name, $status, $info['description']));
         }

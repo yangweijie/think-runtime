@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 🚀 **高性能**: 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Workerman等高性能运行时
+- 🚀 **高性能**: 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Workerman、Bref、Vercel等多种运行时
 - 🔄 **自动检测**: 自动检测并选择最佳运行时环境
 - 🛠 **易于配置**: 简单的配置文件管理
 - 🧪 **完整测试**: 使用Pest测试框架，确保代码质量
@@ -22,9 +22,12 @@
 |--------|------|--------|------|
 | Swoole | 基于Swoole的高性能HTTP服务器 | 100 | ext-swoole |
 | FrankenPHP | 现代PHP应用服务器，支持HTTP/2、HTTP/3 | 95 | frankenphp 二进制文件 |
+| Workerman | 高性能PHP socket服务器框架 | 93 | workerman/workerman |
 | ReactPHP | 事件驱动的异步HTTP服务器 | 92 | react/http, react/socket |
 | Ripple | 基于PHP Fiber的高性能协程HTTP服务器 | 91 | cloudtay/ripple, PHP 8.1+ |
 | RoadRunner | 基于Go的高性能应用服务器 | 90 | spiral/roadrunner |
+| Bref | AWS Lambda serverless运行时 | 85 | bref/bref |
+| Vercel | Vercel serverless functions运行时 | 80 | vercel/php |
 
 ## 安装
 
@@ -91,10 +94,12 @@ return [
     'auto_detect_order' => [
         'swoole',
         'frankenphp',
+        'workerman',
         'reactphp',
         'ripple',
         'roadrunner',
-        'workerman',
+        'bref',
+        'vercel',
     ],
 
     // 运行时配置
@@ -125,12 +130,16 @@ php think runtime:start
 # 指定运行时启动
 php think runtime:start swoole
 php think runtime:start frankenphp
+php think runtime:start workerman
 php think runtime:start reactphp
 php think runtime:start ripple
+php think runtime:start bref
+php think runtime:start vercel
 
 # 自定义参数启动
 php think runtime:start swoole --host=127.0.0.1 --port=8080 --workers=8
 php think runtime:start frankenphp --port=8080 --workers=4
+php think runtime:start workerman --host=0.0.0.0 --port=8080 --workers=4
 php think runtime:start reactphp --host=0.0.0.0 --port=8080
 php think runtime:start ripple --host=0.0.0.0 --port=8080 --workers=4
 ```
@@ -393,6 +402,75 @@ $manager->registerAdapter('custom', CustomAdapter::class);
 ],
 ```
 
+### Bref配置
+
+```php
+'bref' => [
+    // Lambda运行时配置
+    'lambda' => [
+        'timeout' => 30,               // Lambda函数超时时间（秒）
+        'memory' => 512,               // Lambda函数内存大小（MB）
+        'environment' => 'production', // 运行环境
+    ],
+    // HTTP处理配置
+    'http' => [
+        'enable_cors' => true,         // 启用CORS
+        'cors_origin' => '*',          // 允许的源
+        'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS', // 允许的方法
+        'cors_headers' => 'Content-Type, Authorization, X-Requested-With', // 允许的头
+    ],
+    // 错误处理配置
+    'error' => [
+        'display_errors' => false,     // 显示错误
+        'log_errors' => true,          // 记录错误日志
+    ],
+    // 性能监控配置
+    'monitor' => [
+        'enable' => true,              // 启用性能监控
+        'slow_request_threshold' => 1000, // 慢请求阈值（毫秒）
+    ],
+],
+```
+
+### Vercel配置
+
+```php
+'vercel' => [
+    // Vercel函数配置
+    'vercel' => [
+        'timeout' => 10,               // Vercel函数超时时间（秒）
+        'memory' => 1024,              // 函数内存大小（MB）
+        'region' => 'auto',            // 部署区域
+        'runtime' => 'php-8.1',        // PHP运行时版本
+    ],
+    // HTTP处理配置
+    'http' => [
+        'enable_cors' => true,         // 启用CORS
+        'cors_origin' => '*',          // 允许的源
+        'cors_methods' => 'GET, POST, PUT, DELETE, OPTIONS', // 允许的方法
+        'cors_headers' => 'Content-Type, Authorization, X-Requested-With', // 允许的头
+        'max_body_size' => '5mb',      // 最大请求体大小
+    ],
+    // 错误处理配置
+    'error' => [
+        'display_errors' => false,     // 显示错误
+        'log_errors' => true,          // 记录错误日志
+        'error_reporting' => E_ALL & ~E_NOTICE, // 错误报告级别
+    ],
+    // 性能监控配置
+    'monitor' => [
+        'enable' => true,              // 启用性能监控
+        'slow_request_threshold' => 1000, // 慢请求阈值（毫秒）
+        'memory_threshold' => 80,      // 内存使用阈值百分比
+    ],
+    // 静态文件配置
+    'static' => [
+        'enable' => false,             // 启用静态文件服务（Vercel通常由CDN处理）
+        'extensions' => ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg'], // 允许的文件扩展名
+    ],
+],
+```
+
 ## RoadRunner 运行指南
 
 ### 1. 安装依赖
@@ -532,6 +610,257 @@ http:
     destroy_timeout: 60s
 ```
 
+## 运行时可用性要求
+
+要让每个运行时在 `php think runtime:info` 中显示 "Available: Yes"，需要满足以下条件：
+
+### Swoole Runtime
+
+**要求**：
+- 安装 Swoole PHP 扩展
+- Swoole\Server 类可用
+
+**安装步骤**：
+```bash
+# 通过 PECL 安装
+pecl install swoole
+
+# 或通过包管理器安装（Ubuntu/Debian）
+sudo apt-get install php-swoole
+
+# 或通过包管理器安装（CentOS/RHEL）
+sudo yum install php-swoole
+
+# 验证安装
+php -m | grep swoole
+```
+
+**配置**：
+在 php.ini 中添加：
+```ini
+extension=swoole
+```
+
+### FrankenPHP Runtime
+
+**要求**：
+- 在 FrankenPHP 环境中运行，或
+- 系统中安装了 FrankenPHP 二进制文件
+
+**安装步骤**：
+```bash
+# 方法1：下载预编译二进制文件
+curl -fsSL https://github.com/dunglas/frankenphp/releases/latest/download/frankenphp-linux-x86_64 -o frankenphp
+chmod +x frankenphp
+sudo mv frankenphp /usr/local/bin/
+
+# 方法2：通过 Docker
+docker pull dunglas/frankenphp
+
+# 方法3：通过 Composer（开发环境）
+composer require dunglas/frankenphp-dev
+
+# 验证安装
+frankenphp version
+```
+
+**环境变量**（可选）：
+```bash
+export FRANKENPHP_VERSION=1.0.0
+export FRANKENPHP_CONFIG=/path/to/config
+```
+
+### Workerman Runtime
+
+**要求**：
+- Workerman\Worker 类可用
+
+**安装步骤**：
+```bash
+# 通过 Composer 安装
+composer require workerman/workerman
+
+# 验证安装
+php -r "echo class_exists('Workerman\\Worker') ? 'OK' : 'Failed';"
+```
+
+### ReactPHP Runtime
+
+**要求**：
+- React\EventLoop\Loop 类可用
+- React\Http\HttpServer 类可用
+- React\Socket\SocketServer 类可用
+- React\Http\Message\Response 类可用
+- React\Promise\Promise 类可用
+
+**安装步骤**：
+```bash
+# 通过 Composer 安装
+composer require react/http react/socket
+
+# 验证安装
+php -r "
+echo class_exists('React\\EventLoop\\Loop') ? 'EventLoop: OK' : 'EventLoop: Failed';
+echo PHP_EOL;
+echo class_exists('React\\Http\\HttpServer') ? 'HttpServer: OK' : 'HttpServer: Failed';
+"
+```
+
+### Ripple Runtime
+
+**要求**：
+- PHP 8.1+ （支持 Fiber）
+- Ripple\Http\Server 或 Ripple\Server\Server 类可用，或
+- ripple_server_create 函数可用
+
+**安装步骤**：
+```bash
+# 检查 PHP 版本
+php -v  # 确保 >= 8.1
+
+# 通过 Composer 安装
+composer require cloudtay/ripple
+
+# 验证安装
+php -r "
+echo version_compare(PHP_VERSION, '8.1.0', '>=') ? 'PHP Version: OK' : 'PHP Version: Failed';
+echo PHP_EOL;
+echo class_exists('Ripple\\Http\\Server') ? 'Ripple: OK' : 'Ripple: Failed';
+"
+```
+
+### RoadRunner Runtime
+
+**要求**：
+- Spiral\RoadRunner\Worker 类可用
+- Spiral\RoadRunner\Http\PSR7Worker 类可用
+- RR_MODE 环境变量设置
+
+**安装步骤**：
+```bash
+# 安装 RoadRunner 二进制文件
+curl -fsSL https://github.com/roadrunner-server/roadrunner/releases/latest/download/roadrunner-linux-amd64.tar.gz | tar -xz
+sudo mv rr /usr/local/bin/
+
+# 通过 Composer 安装 PHP 包
+composer require spiral/roadrunner-http spiral/roadrunner-worker
+
+# 创建 .rr.yaml 配置文件
+cat > .rr.yaml << EOF
+version: "3"
+server:
+  command: "php worker.php"
+http:
+  address: 0.0.0.0:8080
+EOF
+
+# 设置环境变量
+export RR_MODE=http
+
+# 验证安装
+rr version
+php -r "echo class_exists('Spiral\\RoadRunner\\Worker') ? 'OK' : 'Failed';"
+```
+
+### Bref Runtime
+
+**要求**：
+- 在 AWS Lambda 环境中运行，或
+- Bref\Context\Context 类可用，或
+- Runtime\Bref\Runtime 类可用
+
+**安装步骤**：
+```bash
+# 通过 Composer 安装
+composer require bref/bref
+
+# 验证安装
+php -r "echo class_exists('Bref\\Context\\Context') ? 'OK' : 'Failed';"
+```
+
+**AWS Lambda 环境变量**（自动设置）：
+```bash
+AWS_LAMBDA_FUNCTION_NAME=your-function
+AWS_LAMBDA_RUNTIME_API=127.0.0.1:9001
+_LAMBDA_SERVER_PORT=8080
+```
+
+### Vercel Runtime
+
+**要求**：
+- 在 Vercel 环境中运行，或
+- vercel_request 函数可用，或
+- VERCEL 或 VERCEL_ENV 环境变量设置
+
+**安装步骤**：
+```bash
+# 安装 Vercel CLI
+npm i -g vercel
+
+# 在项目中创建 vercel.json
+cat > vercel.json << EOF
+{
+  "functions": {
+    "api/*.php": {
+      "runtime": "vercel-php@0.6.0"
+    }
+  }
+}
+EOF
+
+# 设置环境变量（开发测试）
+export VERCEL=1
+export VERCEL_ENV=development
+
+# 验证安装
+vercel --version
+```
+
+**Vercel 环境变量**（自动设置）：
+```bash
+VERCEL=1
+VERCEL_ENV=production|preview|development
+VERCEL_URL=your-app.vercel.app
+```
+
+### 故障排除
+
+**常见问题**：
+
+1. **Swoole 显示 "Not Available"**：
+   ```bash
+   # 检查扩展是否加载
+   php -m | grep swoole
+
+   # 检查 php.ini 配置
+   php --ini
+   ```
+
+2. **FrankenPHP 显示 "Not Available"**：
+   ```bash
+   # 检查二进制文件
+   which frankenphp
+
+   # 检查环境变量
+   echo $FRANKENPHP_VERSION
+   ```
+
+3. **Composer 包未找到**：
+   ```bash
+   # 重新安装依赖
+   composer install --no-dev --optimize-autoloader
+
+   # 检查 autoload
+   composer dump-autoload
+   ```
+
+4. **权限问题**：
+   ```bash
+   # 确保二进制文件可执行
+   chmod +x /usr/local/bin/frankenphp
+   chmod +x /usr/local/bin/rr
+   ```
+
 ## 命令行工具
 
 ### runtime:start
@@ -543,13 +872,14 @@ php think runtime:start [runtime] [options]
 ```
 
 参数：
-- `runtime`: 运行时名称 (swoole, reactphp, frankenphp, ripple, roadrunner, workerman, auto)
+- `runtime`: 运行时名称 (swoole, reactphp, frankenphp, ripple, roadrunner, workerman, bref, vercel, auto)
 
 选项：
 - `--host, -H`: 服务器地址 (默认: 0.0.0.0)
 - `--port, -p`: 服务器端口 (默认: 9501)
 - `--daemon, -d`: 守护进程模式
 - `--workers, -w`: Worker进程数 (默认: 4)
+- `--debug`: 启用调试模式
 
 示例：
 ```bash
@@ -557,16 +887,28 @@ php think runtime:start [runtime] [options]
 php think runtime:start
 
 # 启动Swoole服务器
-php think runtime:start swoole --host=127.0.0.1 --port=8080 --workers=8
+php think runtime:start swoole --host=127.0.0.1 --port=8080 --workers=8 --debug
 
 # 启动ReactPHP服务器
-php think runtime:start reactphp --port=8080
+php think runtime:start reactphp --port=8080 --debug
 
 # 启动FrankenPHP服务器
-php think runtime:start frankenphp --port=8080 --workers=4
+php think runtime:start frankenphp --port=8080 --workers=4 --debug
 
 # 启动Workerman服务器
-php think runtime:start workerman --port=8080 --workers=4
+php think runtime:start workerman --port=8080 --workers=4 --daemon
+
+# 启动Ripple服务器
+php think runtime:start ripple --host=0.0.0.0 --port=8080 --workers=4
+
+# 启动RoadRunner服务器
+php think runtime:start roadrunner --debug
+
+# 启动Bref服务器（AWS Lambda环境）
+php think runtime:start bref --debug
+
+# 启动Vercel服务器（Vercel Serverless环境）
+php think runtime:start vercel --debug
 ```
 
 ### runtime:info
@@ -582,6 +924,32 @@ php think runtime:info
 - 各运行时的支持状态
 - 推荐的运行时配置
 - 性能优化建议
+
+### 命令行工具改进
+
+#### v1.3.0 重大优化
+
+1. **代码结构优化**：
+   - 将RuntimeStartCommand中的if-else链重构为switch语句
+   - 提高代码可读性和维护性
+   - 更清晰的runtime处理逻辑
+
+2. **新runtime支持**：
+   - 完整支持Bref、Vercel、Workerman runtime
+   - 智能参数处理，根据runtime类型自动调整选项
+   - 专门的serverless环境适配
+
+3. **参数处理优化**：
+   - Workerman: `--workers` 自动转换为 `count` 参数
+   - Bref/Vercel: 自动移除不适用的选项（host, port, workers, daemon）
+   - FrankenPHP: `--host` 和 `--port` 自动合并为 `listen` 参数
+   - ReactPHP: 自动移除不支持的 `workers` 选项
+   - RoadRunner: 自动移除不适用的网络选项
+
+4. **启动信息显示**：
+   - 每个runtime都有专门的信息显示格式
+   - Serverless runtime显示环境信息
+   - 传统runtime显示网络和进程信息
 
 ## 测试
 
@@ -653,6 +1021,56 @@ MIT License
    ```php
    'max_request_size' => '8M',         // 限制请求大小
    'enable_compression' => true,       // 启用压缩
+   ```
+
+### Workerman 性能优化
+
+1. **进程配置**：
+   ```php
+   'count' => 4,                       // 设置为CPU核心数
+   'reloadable' => true,               // 启用平滑重启
+   'reusePort' => true,                // 启用端口复用（Linux 3.9+）
+   ```
+
+2. **静态文件优化**：
+   ```php
+   'static_file' => [
+       'enable' => true,
+       'cache_time' => 86400,          // 24小时缓存
+       'allowed_extensions' => ['css', 'js', 'png', 'jpg'], // 限制文件类型
+   ]
+   ```
+
+3. **监控配置**：
+   ```php
+   'monitor' => [
+       'slow_request_threshold' => 500, // 500ms慢请求阈值
+       'memory_limit' => '256M',        // 内存限制
+   ]
+   ```
+
+### Bref/Vercel 性能优化
+
+1. **Lambda/Serverless配置**：
+   ```php
+   // Bref
+   'lambda' => [
+       'timeout' => 30,                // 合理的超时时间
+       'memory' => 1024,               // 根据需求调整内存
+   ]
+
+   // Vercel
+   'vercel' => [
+       'timeout' => 10,                // Vercel限制
+       'memory' => 1024,               // 最大内存
+   ]
+   ```
+
+2. **冷启动优化**：
+   ```php
+   'monitor' => [
+       'slow_request_threshold' => 1000, // 考虑冷启动时间
+   ]
    ```
 
 ### 通用优化建议
@@ -743,7 +1161,23 @@ composer cs-fix
 
 ## 更新日志
 
-### v1.2.0 (最新)
+### v1.3.0 (最新)
+- 🆕 **新增 Bref 和 Vercel 适配器**：
+  - Bref: AWS Lambda serverless运行时支持
+  - Vercel: Vercel serverless functions运行时支持
+  - 自动环境检测和配置优化
+  - 完整的serverless环境适配
+- 🛠 **RuntimeStartCommand 重大优化**：
+  - 将if-else链重构为switch语句，提高代码可读性
+  - 添加对所有新runtime的完整支持
+  - 优化命令行参数处理逻辑
+  - 改进启动信息显示，支持所有runtime类型
+- 🐛 **测试修复**：
+  - 修复FrankenphpAdapterTest环境检测测试
+  - 提高测试在不同系统环境中的稳定性
+  - 完善测试覆盖率，确保代码质量
+
+### v1.2.0
 - 🆕 **新增 Workerman 适配器**：
   - 多进程架构，充分利用多核CPU
   - 事件驱动的高效I/O处理
@@ -780,7 +1214,7 @@ composer cs-fix
 
 ### v1.0.0
 - 初始版本发布
-- 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Ripple、Workerman运行时
+- 支持Swoole、RoadRunner、ReactPHP、FrankenPHP、Ripple运行时
 - 提供命令行工具
 - 完整的测试覆盖
 - 自动检测最佳运行时环境
