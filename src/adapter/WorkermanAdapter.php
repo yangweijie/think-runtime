@@ -350,12 +350,46 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             // 处理动态请求
             $psr7Request = $this->convertWorkermanRequestToPsr7($request);
 
+            // 保存原始$_SERVER变量
+            $originalServer = $_SERVER;
+
+            // 更新$_SERVER变量为HTTP请求信息
+        // 调试信息
+        error_log("DEBUG: request->uri(): " . $request->uri());
+        error_log("DEBUG: request->path(): " . $request->path());
+        error_log("DEBUG: parse_url result: " . parse_url($request->uri(), PHP_URL_PATH));
+    // 移除命令行相关的变量
+    unset($_SERVER['argv']);
+    unset($_SERVER['argc']);
+            $_SERVER = array_merge($_SERVER, [
+                'REQUEST_METHOD' => $request->method(),
+                'REQUEST_URI' => parse_url($request->uri(), PHP_URL_PATH) . ($request->queryString() ? '?' . $request->queryString() : ''),
+                'PATH_INFO' => $request->path(),
+                'QUERY_STRING' => $request->queryString(),
+                'HTTP_HOST' => 'localhost:8080',
+                'SERVER_NAME' => $request->host() ?: 'localhost',
+                'HTTP_USER_AGENT' => $request->header('user-agent', 'Workerman/5.0'),
+                'HTTP_ACCEPT' => $request->header('accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+                'CONTENT_TYPE' => $request->header('content-type', ''),
+                'CONTENT_LENGTH' => $request->header('content-length', ''),
+                'SERVER_PROTOCOL' => 'HTTP/1.1',
+                'REQUEST_TIME' => time(),
+                'REQUEST_TIME_FLOAT' => microtime(true),
+                'SCRIPT_NAME' => '/index.php',
+                'PHP_SELF' => '/index.php',                'argv' => [],                'GATEWAY_INTERFACE' => 'CGI/1.1',                'SERVER_SOFTWARE' => 'Workerman/5.0',                'REMOTE_ADDR' => '127.0.0.1',                'REMOTE_HOST' => 'localhost',                'DOCUMENT_ROOT' => getcwd() . '/public',                'REQUEST_SCHEME' => 'http',                'SERVER_PORT' => '8080',                'HTTPS' => '',
+            ]);
+
             // 在每次请求前创建新的应用实例
             $appClass = get_class($this->app);
             $newApp = new $appClass();
 
             // 初始化新的应用实例
             if (method_exists($newApp, 'initialize')) {
+        // 确保Request对象使用正确的server信息
+        if ($newApp->has('request')) {
+            $newRequest = $newApp->request;
+            $newRequest->server = $_SERVER;
+        }
                 $newApp->initialize();
             }
 
@@ -373,6 +407,8 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             } finally {
                 // 恢复原应用实例
                 $this->app = $originalApp;
+                // 恢复原始$_SERVER变量
+                $_SERVER = $originalServer;
             }
 
             // 记录请求指标
@@ -643,10 +679,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         // 构建服务器变量
         $server = array_merge($_SERVER, [
             'REQUEST_METHOD' => $request->method(),
-            'REQUEST_URI' => $request->uri(),
+            'REQUEST_URI' => parse_url($request->uri(), PHP_URL_PATH) . ($request->queryString() ? '?' . $request->queryString() : ''),
             'PATH_INFO' => $request->path(),
             'QUERY_STRING' => $request->queryString(),
-            'HTTP_HOST' => $request->host(),
+            'HTTP_HOST' => 'localhost:8080',
+                'SERVER_NAME' => $request->host() ?: 'localhost',
+                'HTTP_USER_AGENT' => $request->header('user-agent', 'Workerman/5.0'),
+                'HTTP_ACCEPT' => $request->header('accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
             'CONTENT_TYPE' => $request->header('content-type', ''),
             'CONTENT_LENGTH' => $request->header('content-length', ''),
             'SERVER_PROTOCOL' => 'HTTP/1.1',
