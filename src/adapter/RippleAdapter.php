@@ -38,6 +38,13 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     protected array $coroutinePool = [];
 
     /**
+     * 临时上传文件列表
+     *
+     * @var array
+     */
+    protected array $tempUploadFiles = [];
+
+    /**
      * 默认配置
      *
      * @var array
@@ -310,51 +317,189 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function handleRippleRequest(mixed $request): void
     {
-    try {
-        echo "Processing request through ThinkPHP...\n";
-        
-        // 在每次请求前创建新的应用实例（像 ReactPHP 适配器一样）
-        $appClass = get_class($this->app);
-        $newApp = new $appClass();
-        
-        // 初始化新的应用实例
-        if (method_exists($newApp, 'initialize')) {
-            $newApp->initialize();
-        }
-        
-        // 临时保存原应用实例
-        $originalApp = $this->app;
-        // 设置新的应用实例
-        $this->app = $newApp;
-        
-        echo "Created new app instance: " . $appClass . "\n";
+        try {
+            echo "Processing request through ThinkPHP...\n";
 
-        // 确保新应用实例也设置无限执行时间
-        set_time_limit(0);
-        
-        // 转换为PSR-7请求
-        $psr7Request = $this->convertRippleRequestToPsr7($request);
-        
-        // 通过 ThinkPHP 完整流程处理请求（包括中间件、trace等）
-        $psr7Response = $this->handleRequest($psr7Request);
-        
-        // 发送响应
-        $this->sendRippleResponse($psr7Response, $request);
-        
-        // 恢复原应用实例
-        $this->app = $originalApp;
-        
-        echo "Restored original app instance\n";
-        
-    } catch (Throwable $e) {
-        // 确保在异常情况下也恢复原应用实例
-        if (isset($originalApp)) {
-            $this->app = $originalApp;
+            // 保存原始全局变量
+            $originalGet = $_GET;
+            $originalPost = $_POST;
+            $originalFiles = $_FILES;
+            $originalCookie = $_COOKIE;
+            $originalServer = $_SERVER;
+
+            // 从 Ripple Request 对象中提取数据并设置全局变量
+
+            if (isset($request->GET)) {
+                $_GET = $request->GET;
+            }
+            if (isset($request->POST)) {
+                $_POST = $request->POST;
+            }
+            if (isset($request->FILES)) {
+                echo "DEBUG: Ripple request has FILES property\n";
+                echo "DEBUG: Raw FILES data: " . json_encode($request->FILES, JSON_UNESCAPED_UNICODE) . "\n";
+                
+                // 检查是否有其他可能的文件数据源
+                echo "DEBUG: Checking Ripple request properties:\n";
+                $requestVars = get_object_vars($request);
+                foreach ($requestVars as $key => $value) {
+                    if (stripos($key, 'file') !== false || stripos($key, 'upload') !== false) {
+                        echo "DEBUG: Found potential file property '$key': " . json_encode($value) . "\n";
+                    }
+                }
+                
+                // 转换文件格式，参考 WorkermanAdapter 实现
+                $_FILES = $this->convertRippleFiles($request->FILES);
+                
+                // 如果没有处理到文件，尝试从 POST 数据中查找
+                if (empty($_FILES) && !empty($request->POST)) {
+                    echo "DEBUG: Checking POST data for file information\n";
+                    foreach ($request->POST as $key => $value) {
+                        if (stripos($key, 'file') !== false && is_array($value)) {
+                            echo "DEBUG: Found file data in POST['$key']: " . json_encode($value) . "\n";
+                            $_FILES[$key] = [
+                                'name' => $value['name'] ?? 'uploaded_file',
+                                'type' => $value['type'] ?? 'application/octet-stream',
+                                'size' => isset($value['size']) ? (int)$value['size'] : 0,
+                                'tmp_name' => $value['tmp_name'] ?? '',
+                                'error' => isset($value['error']) ? (int)$value['error'] : UPLOAD_ERR_OK,
+                            ];
+                        }
+                    }
+                }
+                
+                // 输出最终的 $_FILES 结果
+                echo "DEBUG: Final \$_FILES: " . json_encode($_FILES, JSON_UNESCAPED_UNICODE) . "\n";
+                if (!empty($_FILES)) {
+                    echo "DEBUG: Successfully processed " . count($_FILES) . " file(s)\n";
+                } else {
+                    echo "DEBUG: No valid files processed\n";
+                }
+            } else {
+                echo "DEBUG: Ripple request has no FILES property\n";
+                $_FILES = [];
+            }
+            if (isset($request->COOKIE)) {
+                $_COOKIE = $request->COOKIE;
+            }
+
+            // 构建完整的 host 信息（参考 Swoole adapter）
+            $serverPort = $request->SERVER['SERVER_PORT'] ?? '8080';
+            $hostHeader = $request->SERVER['HTTP_HOST'] ?? null;
+
+            // 如果 host 头存在且已包含端口，直接使用；否则构建完整的 host:port
+            if ($hostHeader && strpos($hostHeader, ':') !== false) {
+                $httpHost = $hostHeader;
+                $serverName = explode(':', $hostHeader)[0];
+            } elseif ($hostHeader) {
+                $httpHost = $hostHeader . ':' . $serverPort;
+                $serverName = $hostHeader;
+            } else {
+                $httpHost = 'localhost:' . $serverPort;
+                $serverName = 'localhost';
+            }
+
+            // 更新$_SERVER变量为HTTP请求信息
+            if (isset($request->SERVER)) {
+                $_SERVER = array_merge($_SERVER, $request->SERVER, [
+                    'HTTP_HOST' => $httpHost,
+                    'SERVER_NAME' => $serverName,
+                    'SERVER_PROTOCOL' => 'HTTP/1.1',
+                    'REQUEST_TIME' => time(),
+                    'REQUEST_TIME_FLOAT' => microtime(true),
+                    'SCRIPT_NAME' => '/index.php',
+                    'PHP_SELF' => '/index.php',
+                    'GATEWAY_INTERFACE' => 'CGI/1.1',
+                    'SERVER_SOFTWARE' => 'Ripple/1.0',
+                    'REMOTE_ADDR' => $request->SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
+                    'REMOTE_HOST' => 'localhost',
+                    'DOCUMENT_ROOT' => getcwd() . '/public',
+                    'REQUEST_SCHEME' => 'http',
+                    'SERVER_PORT' => $serverPort,
+                    'HTTPS' => '',
+                    // 设置命令行相关的变量为安全值（避免 think-trace 报错）
+                    'argv' => [],
+                    'argc' => 0,
+                ]);
+            }
+
+            // 在每次请求前创建新的应用实例（像 ReactPHP 适配器一样）
+            $appClass = get_class($this->app);
+            $newApp = new $appClass();
+
+            // 初始化新的应用实例
+            if (method_exists($newApp, 'initialize')) {
+                $newApp->initialize();
+            }
+
+            // 更新应用中的 Request 对象信息（参考 SwooleAdapter）
+            if ($newApp->has('request')) {
+                $appRequest = $newApp->request;
+                $reflection = new \ReflectionClass($appRequest);
+
+                // 更新 Request 对象的 server 属性
+                if (property_exists($appRequest, 'server')) {
+                    $serverProperty = $reflection->getProperty('server');
+                    $serverProperty->setAccessible(true);
+                    $serverProperty->setValue($appRequest, $_SERVER);
+                }
+
+                // 强制重置 host 缓存
+                if (property_exists($appRequest, 'host')) {
+                    $hostProperty = $reflection->getProperty('host');
+                    $hostProperty->setAccessible(true);
+                    $hostProperty->setValue($appRequest, null); // 重置，让它重新从 server 中读取
+                }
+
+                // 强制更新 Request 对象的文件信息
+                try {
+                    $fileProperty = $reflection->getProperty('file');
+                    $fileProperty->setAccessible(true);
+                    $fileProperty->setValue($appRequest, $_FILES);
+                } catch (\Exception $e) {
+                    echo "ERROR: Failed to update Request file property: " . $e->getMessage() . "\n";
+                }
+            }
+
+            // 临时保存原应用实例
+            $originalApp = $this->app;
+            // 设置新的应用实例
+            $this->app = $newApp;
+
+            echo "Created new app instance: " . $appClass . "\n";
+
+            // 确保新应用实例也设置无限执行时间
+            set_time_limit(0);
+
+            try {
+                // 转换为PSR-7请求
+                $psr7Request = $this->convertRippleRequestToPsr7($request);
+
+                // 通过 ThinkPHP 完整流程处理请求（包括中间件、trace等）
+                $psr7Response = $this->handleRequest($psr7Request);
+
+                // 发送响应
+                $this->sendRippleResponse($psr7Response, $request);
+            } finally {
+                // 恢复原应用实例
+                $this->app = $originalApp;
+                // 恢复原始全局变量
+                $_GET = $originalGet;
+                $_POST = $originalPost;
+                $_FILES = $originalFiles;
+                $_COOKIE = $originalCookie;
+                $_SERVER = $originalServer;
+                // 清理临时上传文件
+                $this->cleanupTempUploadFiles();
+            }
+
+            echo "Restored original app instance\n";
+
+        } catch (Throwable $e) {
+            echo "Error: " . $e->getMessage() . "\n";
+            $this->handleRippleError($e, $request);
         }
-        echo "Error: " . $e->getMessage() . "\n";
-        $this->handleRippleError($e, $request);
     }
-}
     /**
      * 在协程中处理请求
      *
@@ -409,66 +554,177 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 转换 Ripple 文件对象为传统 $_FILES 格式（参考 WorkermanAdapter 实现）
+     *
+     * @param mixed $files Ripple 文件数据
+     * @return array 标准 PHP $_FILES 格式数组
+     */
+    protected function convertRippleFiles($files): array
+    {
+        if (!is_array($files)) {
+            echo "DEBUG: Ripple FILES is not array, type: " . gettype($files) . "\n";
+            return [];
+        }
+
+        echo "DEBUG: Processing Ripple FILES with " . count($files) . " items\n";
+        
+        $validFiles = [];
+        $tempFiles = []; // 记录临时文件，用于后续清理
+
+        foreach ($files as $name => $file) {
+            echo "DEBUG: Processing file '$name', type: " . gettype($file) . "\n";
+            
+            // 检查是否是 PSR-7 UploadedFileInterface 对象（类似 ReactPHP）
+            if ($file instanceof \Psr\Http\Message\UploadedFileInterface) {
+                echo "DEBUG: File '$name' is PSR-7 UploadedFileInterface\n";
+                try {
+                    // 创建临时文件
+                    $tmpName = tempnam(sys_get_temp_dir(), 'ripple_upload_');
+
+                    // 将上传内容写入临时文件
+                    $stream = $file->getStream();
+                    $stream->rewind(); // 确保从头开始读取
+                    file_put_contents($tmpName, $stream->getContents());
+
+                    // 记录临时文件路径，用于后续清理
+                    $tempFiles[] = $tmpName;
+
+                    // 构建 $_FILES 格式的数组
+                    $validFiles[$name] = [
+                        'name' => $file->getClientFilename() ?? '',
+                        'type' => $file->getClientMediaType() ?? '',
+                        'size' => $file->getSize() ?? 0,
+                        'tmp_name' => $tmpName,
+                        'error' => $file->getError() ?? UPLOAD_ERR_OK,
+                    ];
+                    echo "DEBUG: Successfully processed PSR-7 file '$name'\n";
+                } catch (\Throwable $e) {
+                    echo "DEBUG: Failed to process PSR-7 file '$name': " . $e->getMessage() . "\n";
+                    // 如果处理失败，设置错误状态
+                    $validFiles[$name] = [
+                        'name' => $file->getClientFilename() ?? '',
+                        'type' => '',
+                        'size' => 0,
+                        'tmp_name' => '',
+                        'error' => UPLOAD_ERR_CANT_WRITE,
+                    ];
+                }
+            } elseif (is_array($file)) {
+                echo "DEBUG: File '$name' is array format\n";
+                
+                // 检查是否是 Ripple 特有的格式：数组包含对象
+                if (is_numeric(array_keys($file)[0] ?? null)) {
+                    echo "DEBUG: File '$name' is Ripple indexed array format\n";
+                    // Ripple 格式：{"file":[{}]} - 处理数组中的第一个元素
+                    $fileData = $file[0] ?? [];
+                    if (is_array($fileData) || is_object($fileData)) {
+                        echo "DEBUG: Processing Ripple file data: " . json_encode($fileData) . "\n";
+                        
+                        // 转换对象为数组
+                        if (is_object($fileData)) {
+                            $fileData = (array)$fileData;
+                        }
+                        
+                        // 构建标准文件数组
+                        $standardFile = [
+                            'name' => $fileData['name'] ?? $fileData['filename'] ?? '',
+                            'type' => $fileData['type'] ?? $fileData['mime'] ?? $fileData['content-type'] ?? '',
+                            'size' => isset($fileData['size']) ? (int)$fileData['size'] : 0,
+                            'tmp_name' => $fileData['tmp_name'] ?? $fileData['path'] ?? '',
+                            'error' => isset($fileData['error']) ? (int)$fileData['error'] : UPLOAD_ERR_OK,
+                        ];
+                        
+                        // 如果没有临时文件路径但有内容，创建临时文件
+                        if (empty($standardFile['tmp_name']) && !empty($fileData['content'])) {
+                            $tmpName = tempnam(sys_get_temp_dir(), 'ripple_upload_');
+                            file_put_contents($tmpName, $fileData['content']);
+                            $standardFile['tmp_name'] = $tmpName;
+                            $tempFiles[] = $tmpName;
+                            echo "DEBUG: Created temp file for content: $tmpName\n";
+                        }
+                        
+                        if (!empty($standardFile['name'])) {
+                            $validFiles[$name] = $standardFile;
+                            echo "DEBUG: Successfully processed Ripple file '$name': {$standardFile['name']}\n";
+                        } else {
+                            echo "DEBUG: Ripple file '$name' has no name, data: " . json_encode($fileData) . "\n";
+                        }
+                    } else {
+                        echo "DEBUG: Ripple file '$name' data is not array/object\n";
+                    }
+                } elseif (isset($file['name']) && is_array($file['name'])) {
+                    echo "DEBUG: File '$name' is multi-file upload\n";
+                    // 处理多文件上传的情况
+                    $validFiles[$name] = $this->convertRippleFiles($file);
+                } else {
+                    echo "DEBUG: File '$name' is single file array format\n";
+                    // 处理传统数组格式
+                    $standardFile = [
+                        'name' => $file['name'] ?? '',
+                        'type' => $file['type'] ?? '',
+                        'size' => isset($file['size']) ? (int)$file['size'] : 0,
+                        'tmp_name' => $file['tmp_name'] ?? '',
+                        'error' => isset($file['error']) ? (int)$file['error'] : UPLOAD_ERR_OK,
+                    ];
+
+                    // 只要有文件名就认为是有效文件（参考 WorkermanAdapter）
+                    if (!empty($standardFile['name'])) {
+                        $validFiles[$name] = $standardFile;
+                        echo "DEBUG: Successfully processed array file '$name': {$standardFile['name']}\n";
+                    } else {
+                        echo "DEBUG: Skipped empty file '$name'\n";
+                    }
+                }
+            } else {
+                echo "DEBUG: File '$name' has unsupported type: " . gettype($file) . "\n";
+                // 尝试直接使用（可能是 Ripple 特有的格式）
+                if (is_object($file)) {
+                    echo "DEBUG: File '$name' is object of class: " . get_class($file) . "\n";
+                }
+            }
+        }
+
+        // 将临时文件列表存储到类属性中，用于后续清理
+        $this->tempUploadFiles = array_merge($this->tempUploadFiles ?? [], $tempFiles);
+
+        echo "DEBUG: Converted " . count($validFiles) . " valid files\n";
+        return $validFiles;
+    }
+
+    /**
+     * 清理临时上传文件（参考 ReactPHP 实现）
+     *
+     * @return void
+     */
+    protected function cleanupTempUploadFiles(): void
+    {
+        if (!empty($this->tempUploadFiles)) {
+            foreach ($this->tempUploadFiles as $tempFile) {
+                if (file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+            }
+            $this->tempUploadFiles = [];
+        }
+    }
+
+    /**
      * 将Ripple请求转换为PSR-7请求
      *
      * @return ServerRequestInterface PSR-7请求
      */
     protected function convertRippleRequestToPsr7(mixed $request): ServerRequestInterface
     {
-    $psr17Factory = new Psr17Factory();
-    $creator = new ServerRequestCreator(
-        $psr17Factory,
-        $psr17Factory,
-        $psr17Factory,
-        $psr17Factory
-    );
+        $psr17Factory = new Psr17Factory();
+        $creator = new ServerRequestCreator(
+            $psr17Factory,
+            $psr17Factory,
+            $psr17Factory,
+            $psr17Factory
+        );
 
-    // 从 Ripple Request 对象创建 PSR-7 请求
-    if (isset($request->SERVER)) {
-        // 备份原始全局变量
-        $originalServer = $_SERVER;
-        $originalGet = $_GET ?? [];
-        $originalPost = $_POST ?? [];
-        $originalCookie = $_COOKIE ?? [];
-        $originalFiles = $_FILES ?? [];
-        
-        // 设置服务器变量
-        $_SERVER = array_merge($_SERVER, $request->SERVER);
-        
-        // 设置 GET 参数
-        if (isset($request->GET)) {
-            $_GET = $request->GET;
-        }
-        
-        // 设置 POST 参数
-        if (isset($request->POST)) {
-            $_POST = $request->POST;
-        }
-        
-        // 设置 COOKIE
-        if (isset($request->COOKIE)) {
-            $_COOKIE = $request->COOKIE;
-        }
-        
-        // 设置文件上传
-        if (isset($request->FILES)) {
-            $_FILES = $request->FILES;
-        }
-        
-        // 创建 PSR-7 请求
-        $psr7Request = $creator->fromGlobals();
-        
-        // 恢复原始全局变量（避免影响其他请求）
-        $_SERVER = $originalServer;
-        $_GET = $originalGet;
-        $_POST = $originalPost;
-        $_COOKIE = $originalCookie;
-        $_FILES = $originalFiles;
-        
-        return $psr7Request;
-    }
-
-    return $creator->fromGlobals();
+        // 直接从全局变量创建 PSR-7 请求（全局变量已在 handleRippleRequest 中设置）
+        return $creator->fromGlobals();
     }
 
     /**
