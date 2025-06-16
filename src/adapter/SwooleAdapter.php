@@ -499,28 +499,114 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                 if ($this->handleStaticFile($request, $response)) {
                     return;
                 }
-                
+
+                // 保存原始全局变量
+                $originalGet = $_GET;
+                $originalPost = $_POST;
+                $originalFiles = $_FILES;
+                $originalCookie = $_COOKIE;
+                $originalServer = $_SERVER;
+
+                // 设置全局变量以兼容传统PHP环境
+                $_GET = $request->get ?? [];
+                $_POST = $request->post ?? [];
+                $_FILES = $request->files ?? [];
+                $_COOKIE = $request->cookie ?? [];
+
+                // 构建完整的 host 信息
+                $serverPort = $request->server['server_port'] ?? '9501';
+                $hostHeader = $request->header['host'] ?? null;
+
+                // 如果 host 头存在且已包含端口，直接使用；否则构建完整的 host:port
+                if ($hostHeader && strpos($hostHeader, ':') !== false) {
+                    $httpHost = $hostHeader;
+                    $serverName = explode(':', $hostHeader)[0];
+                } elseif ($hostHeader) {
+                    $httpHost = $hostHeader . ':' . $serverPort;
+                    $serverName = $hostHeader;
+                } else {
+                    $httpHost = 'localhost:' . $serverPort;
+                    $serverName = 'localhost';
+                }
+
+                // 更新$_SERVER变量为HTTP请求信息
+                $_SERVER = array_merge($_SERVER, [
+                    'REQUEST_METHOD' => $request->server['request_method'] ?? 'GET',
+                    'REQUEST_URI' => $request->server['request_uri'] ?? '/',
+                    'PATH_INFO' => $request->server['path_info'] ?? '/',
+                    'QUERY_STRING' => $request->server['query_string'] ?? '',
+                    'HTTP_HOST' => $httpHost,
+                    'SERVER_NAME' => $serverName,
+                    'HTTP_USER_AGENT' => $request->header['user-agent'] ?? 'Swoole/4.0',
+                    'HTTP_ACCEPT' => $request->header['accept'] ?? 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'CONTENT_TYPE' => $request->header['content-type'] ?? '',
+                    'CONTENT_LENGTH' => $request->header['content-length'] ?? '',
+                    'SERVER_PROTOCOL' => 'HTTP/1.1',
+                    'REQUEST_TIME' => time(),
+                    'REQUEST_TIME_FLOAT' => microtime(true),
+                    'SCRIPT_NAME' => '/index.php',
+                    'PHP_SELF' => '/index.php',
+                    'GATEWAY_INTERFACE' => 'CGI/1.1',
+                    'SERVER_SOFTWARE' => 'Swoole/4.0',
+                    'REMOTE_ADDR' => $request->server['remote_addr'] ?? '127.0.0.1',
+                    'REMOTE_HOST' => 'localhost',
+                    'DOCUMENT_ROOT' => getcwd() . '/public',
+                    'REQUEST_SCHEME' => 'http',
+                    'SERVER_PORT' => $serverPort,
+                    'HTTPS' => '',
+                    // 设置命令行相关的变量为安全值（避免 think-trace 报错）
+                    'argv' => [],
+                    'argc' => 0,
+                ]);
+
                 // 在每次请求前创建新的应用实例
                 $appClass = get_class($this->app);
                 $newApp = new $appClass();
-                
+
                 // 初始化新的应用实例
                 if (method_exists($newApp, 'initialize')) {
                     $newApp->initialize();
                 }
-                
+
+                // 更新应用中的 Request 对象信息
+                if ($newApp->has('request')) {
+                    $appRequest = $newApp->request;
+                    // 更新 Request 对象的 server 属性
+                    if (property_exists($appRequest, 'server')) {
+                        $reflection = new \ReflectionClass($appRequest);
+                        $serverProperty = $reflection->getProperty('server');
+                        $serverProperty->setAccessible(true);
+                        $serverProperty->setValue($appRequest, $_SERVER);
+                    }
+                    // 强制重置 host 缓存
+                    if (property_exists($appRequest, 'host')) {
+                        $reflection = new \ReflectionClass($appRequest);
+                        $hostProperty = $reflection->getProperty('host');
+                        $hostProperty->setAccessible(true);
+                        $hostProperty->setValue($appRequest, null); // 重置，让它重新从 server 中读取
+                    }
+                }
+
                 // 临时保存原应用实例
                 $originalApp = $this->app;
                 // 设置新的应用实例
                 $this->app = $newApp;
-                
-                // 处理动态请求
-                $psr7Request = $this->convertSwooleRequestToPsr7($request);
-                $psr7Response = $this->handleRequest($psr7Request);
-                $this->sendSwooleResponse($response, $psr7Response);
-                
-                // 恢复原应用实例
-                $this->app = $originalApp;
+
+                try {
+                    // 处理动态请求
+                    $psr7Request = $this->convertSwooleRequestToPsr7($request);
+                    $psr7Response = $this->handleRequest($psr7Request);
+                    $this->sendSwooleResponse($response, $psr7Response);
+                } finally {
+                    // 恢复原应用实例
+                    $this->app = $originalApp;
+                    // 恢复原始全局变量
+                    $_GET = $originalGet;
+                    $_POST = $originalPost;
+                    $_FILES = $originalFiles;
+                    $_COOKIE = $originalCookie;
+                    $_SERVER = $originalServer;
+                }
 
                 // 重置调试状态，防止think-trace累积
                 $this->resetDebugState();
@@ -660,15 +746,50 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
             );
         }
 
-        // 构建服务器变量
+        // 构建完整的 host 信息（与 onRequest 中的逻辑保持一致）
+        $serverPort = $request->server['server_port'] ?? '9501';
+        $hostHeader = $request->header['host'] ?? null;
+
+        // 如果 host 头存在且已包含端口，直接使用；否则构建完整的 host:port
+        if ($hostHeader && strpos($hostHeader, ':') !== false) {
+            $httpHost = $hostHeader;
+            $serverName = explode(':', $hostHeader)[0];
+        } elseif ($hostHeader) {
+            $httpHost = $hostHeader . ':' . $serverPort;
+            $serverName = $hostHeader;
+        } else {
+            $httpHost = 'localhost:' . $serverPort;
+            $serverName = 'localhost';
+        }
+
+        // 构建完整的服务器变量（与 onRequest 中的设置保持一致）
         $server = array_merge($_SERVER, [
             'REQUEST_METHOD' => $request->server['request_method'] ?? 'GET',
             'REQUEST_URI' => $request->server['request_uri'] ?? '/',
             'PATH_INFO' => $request->server['path_info'] ?? '/',
             'QUERY_STRING' => $request->server['query_string'] ?? '',
-            'HTTP_HOST' => $request->header['host'] ?? 'localhost',
+            'HTTP_HOST' => $httpHost,
+            'SERVER_NAME' => $serverName,
+            'HTTP_USER_AGENT' => $request->header['user-agent'] ?? 'Swoole/4.0',
+            'HTTP_ACCEPT' => $request->header['accept'] ?? 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'CONTENT_TYPE' => $request->header['content-type'] ?? '',
             'CONTENT_LENGTH' => $request->header['content-length'] ?? '',
+            'SERVER_PROTOCOL' => 'HTTP/1.1',
+            'REQUEST_TIME' => time(),
+            'REQUEST_TIME_FLOAT' => microtime(true),
+            'SCRIPT_NAME' => '/index.php',
+            'PHP_SELF' => '/index.php',
+            'GATEWAY_INTERFACE' => 'CGI/1.1',
+            'SERVER_SOFTWARE' => 'Swoole/4.0',
+            'REMOTE_ADDR' => $request->server['remote_addr'] ?? '127.0.0.1',
+            'REMOTE_HOST' => 'localhost',
+            'DOCUMENT_ROOT' => getcwd() . '/public',
+            'REQUEST_SCHEME' => 'http',
+            'SERVER_PORT' => $serverPort,
+            'HTTPS' => '',
+            // 设置命令行相关的变量为安全值（避免 think-trace 报错）
+            'argv' => [],
+            'argc' => 0,
         ]);
 
         return $this->requestCreator->fromArrays(

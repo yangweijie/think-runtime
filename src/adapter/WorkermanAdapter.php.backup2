@@ -163,6 +163,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         }
         $this->worker = new Worker($listen, $config['context']);
 
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
+
         // 设置 Worker 属性
         $this->worker->count = $config['count'];
         $this->worker->name = $config['name'];
@@ -268,15 +275,29 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     protected function initMiddlewares(): void
     {
         $config = array_merge($this->defaultConfig, $this->config);
-
+        
         // 添加 CORS 中间件
         if ($config['middleware']['cors']['enable'] ?? true) {
             $this->addMiddleware([$this, 'corsMiddleware']);
-        }
 
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
+        }
+        
         // 添加安全中间件
         if ($config['middleware']['security']['enable'] ?? true) {
             $this->addMiddleware([$this, 'securityMiddleware']);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
         }
     }
 
@@ -330,7 +351,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     public function onMessage(TcpConnection $connection, WorkermanRequest $request): void
     {
         $startTime = microtime(true);
-
+        
         try {
             // 设置连接上下文
             $this->setConnectionContext($connection, $request, $startTime);
@@ -347,20 +368,34 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
                 return;
             }
 
-            // 保存原始全局变量
-            $originalGet = $_GET;
-            $originalPost = $_POST;
-            $originalFiles = $_FILES;
-            $originalCookie = $_COOKIE;
+            // 处理动态请求
+            $psr7Request = $this->convertWorkermanRequestToPsr7($request);
+
+            // 保存原始$_SERVER变量
+        $originalGet = $_GET;
+        $originalPost = $_POST;
+        $originalFiles = $_FILES;
+        $originalCookie = $_COOKIE;
             $originalServer = $_SERVER;
 
-            // 设置全局变量以兼容传统PHP环境
-            $_GET = $request->get() ?? [];
-            $_POST = $request->post() ?? [];
-            $_FILES = $request->file() ?? [];
-            $_COOKIE = $request->cookie() ?? [];
-
             // 更新$_SERVER变量为HTTP请求信息
+    // 移除命令行相关的变量
+    unset($_SERVER['argv']);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
+    unset($_SERVER['argc']);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
             $_SERVER = array_merge($_SERVER, [
                 'REQUEST_METHOD' => $request->method(),
                 'REQUEST_URI' => parse_url($request->uri(), PHP_URL_PATH) . ($request->queryString() ? '?' . $request->queryString() : ''),
@@ -376,19 +411,16 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
                 'REQUEST_TIME' => time(),
                 'REQUEST_TIME_FLOAT' => microtime(true),
                 'SCRIPT_NAME' => '/index.php',
-                'PHP_SELF' => '/index.php',
-                'GATEWAY_INTERFACE' => 'CGI/1.1',
-                'SERVER_SOFTWARE' => 'Workerman/5.0',
-                'REMOTE_ADDR' => '127.0.0.1',
-                'REMOTE_HOST' => 'localhost',
-                'DOCUMENT_ROOT' => getcwd() . '/public',
-                'REQUEST_SCHEME' => 'http',
-                'SERVER_PORT' => '8080',
-                'HTTPS' => '',
-                // 设置命令行相关的变量为安全值（避免 think-trace 报错）
-                'argv' => [],
-                'argc' => 0,
+                'PHP_SELF' => '/index.php',                'argv' => [],                'GATEWAY_INTERFACE' => 'CGI/1.1',                'SERVER_SOFTWARE' => 'Workerman/5.0',                'REMOTE_ADDR' => '127.0.0.1',                'REMOTE_HOST' => 'localhost',                'DOCUMENT_ROOT' => getcwd() . '/public',                'REQUEST_SCHEME' => 'http',                'SERVER_PORT' => '8080',                'HTTPS' => '',
+
             ]);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
 
             // 在每次请求前创建新的应用实例
             $appClass = get_class($this->app);
@@ -396,26 +428,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
             // 初始化新的应用实例
             if (method_exists($newApp, 'initialize')) {
+        if ($newApp->has('request')) {
+            $newRequest = $newApp->request;
+            $newRequest->withFiles($_FILES);
+            $newRequest = $newApp->request;
+            $newRequest->server = $_SERVER;
+        }
                 $newApp->initialize();
-            }
-
-            // 更新应用中的 Request 对象信息（参考 SwooleAdapter）
-            if ($newApp->has('request')) {
-                $appRequest = $newApp->request;
-                // 更新 Request 对象的 server 属性
-                if (property_exists($appRequest, 'server')) {
-                    $reflection = new \ReflectionClass($appRequest);
-                    $serverProperty = $reflection->getProperty('server');
-                    $serverProperty->setAccessible(true);
-                    $serverProperty->setValue($appRequest, $_SERVER);
-                }
-                // 强制重置 host 缓存
-                if (property_exists($appRequest, 'host')) {
-                    $reflection = new \ReflectionClass($appRequest);
-                    $hostProperty = $reflection->getProperty('host');
-                    $hostProperty->setAccessible(true);
-                    $hostProperty->setValue($appRequest, null); // 重置，让它重新从 server 中读取
-                }
             }
 
             // 临时保存原应用实例
@@ -424,8 +443,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             $this->app = $newApp;
 
             try {
-                // 处理动态请求
-                $psr7Request = $this->convertWorkermanRequestToPsr7($request);
+                // 处理请求
                 $psr7Response = $this->handleRequest($psr7Request);
                 $workermanResponse = $this->convertPsr7ToWorkermanResponse($psr7Response);
 
@@ -433,7 +451,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             } finally {
                 // 恢复原应用实例
                 $this->app = $originalApp;
-                // 恢复原始全局变量
+                // 恢复原始$_SERVER变量
                 $_GET = $originalGet;
                 $_POST = $originalPost;
                 $_FILES = $originalFiles;
@@ -539,6 +557,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     {
         $connectionId = spl_object_id($connection);
         unset($this->connectionContext[$connectionId]);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
     }
 
     /**
@@ -706,35 +731,29 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             );
         }
 
-        // 构建服务器变量（与 onMessage 中的设置保持一致）
+        // 构建服务器变量
         $server = array_merge($_SERVER, [
             'REQUEST_METHOD' => $request->method(),
             'REQUEST_URI' => parse_url($request->uri(), PHP_URL_PATH) . ($request->queryString() ? '?' . $request->queryString() : ''),
             'PATH_INFO' => $request->path(),
             'QUERY_STRING' => $request->queryString(),
             'HTTP_HOST' => 'localhost:8080',
-            'SERVER_NAME' => $request->host() ?: 'localhost',
-            'HTTP_USER_AGENT' => $request->header('user-agent', 'Workerman/5.0'),
-            'HTTP_ACCEPT' => $request->header('accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+                'SERVER_NAME' => $request->host() ?: 'localhost',
+                'HTTP_USER_AGENT' => $request->header('user-agent', 'Workerman/5.0'),
+                'HTTP_ACCEPT' => $request->header('accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
             'CONTENT_TYPE' => $request->header('content-type', ''),
             'CONTENT_LENGTH' => $request->header('content-length', ''),
             'SERVER_PROTOCOL' => 'HTTP/1.1',
             'REQUEST_TIME' => time(),
             'REQUEST_TIME_FLOAT' => microtime(true),
-            'SCRIPT_NAME' => '/index.php',
-            'PHP_SELF' => '/index.php',
-            'GATEWAY_INTERFACE' => 'CGI/1.1',
-            'SERVER_SOFTWARE' => 'Workerman/5.0',
-            'REMOTE_ADDR' => '127.0.0.1',
-            'REMOTE_HOST' => 'localhost',
-            'DOCUMENT_ROOT' => getcwd() . '/public',
-            'REQUEST_SCHEME' => 'http',
-            'SERVER_PORT' => '8080',
-            'HTTPS' => '',
-            // 设置命令行相关的变量为安全值（避免 think-trace 报错）
-            'argv' => [],
-            'argc' => 0,
         ]);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
 
         return $this->requestCreator->fromArrays(
             $server,
@@ -911,6 +930,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             // 清理超过5分钟的上下文
             if ($now - $context['start_time'] > 300) {
                 unset($this->connectionContext[$id]);
+
+        // 设置全局变量以兼容传统PHP环境
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
             }
         }
     }
