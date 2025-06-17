@@ -61,6 +61,12 @@ class RuntimeStartCommand extends Command
 
         $options = $this->buildStartOptions($runtime, $options);
 
+        // 特殊处理 RoadRunner：生成 worker.php 文件而不是直接启动
+        if ($runtime === 'roadrunner') {
+            $this->generateRoadRunnerWorker($output, $options);
+            return 0;
+        }
+
         $runtimeManager->start($runtime, $options);
 
         $this->displayStartupInfo($output, $runtimeManager, $options);
@@ -262,5 +268,104 @@ class RuntimeStartCommand extends Command
 
         $output->writeln('');
         $output->writeln('<info>Use Ctrl+C to stop the server</info>');
+    }
+
+    /**
+     * 生成 RoadRunner worker.php 文件
+     *
+     * @param Output $output
+     * @param array $options
+     * @return void
+     */
+    protected function generateRoadRunnerWorker(Output $output, array $options): void
+    {
+        $workerContent = $this->getRoadRunnerWorkerTemplate($options);
+        
+        // 在项目根目录生成 worker.php
+        $workerPath = getcwd() . '/worker.php';
+        
+        if (file_put_contents($workerPath, $workerContent) !== false) {
+            $output->writeln('<info>RoadRunner worker.php generated successfully!</info>');
+            $output->writeln('');
+            $output->writeln('<comment>File: ' . $workerPath . '</comment>');
+            $output->writeln('');
+            $output->writeln('<info>To start RoadRunner server:</info>');
+            $output->writeln('<comment>1. Install RoadRunner binary: https://roadrunner.dev/docs/installation</comment>');
+            $output->writeln('<comment>2. Create .rr.yaml configuration file</comment>');
+            $output->writeln('<comment>3. Run: rr serve</comment>');
+            $output->writeln('');
+            $output->writeln('<info>Example .rr.yaml configuration:</info>');
+            $output->writeln($this->getRoadRunnerConfigExample());
+        } else {
+            $output->writeln('<error>Failed to generate worker.php file!</error>');
+        }
+    }
+
+    /**
+     * 获取 RoadRunner worker.php 模板
+     *
+     * @param array $options
+     * @return string
+     */
+    protected function getRoadRunnerWorkerTemplate(array $options): string
+    {
+        $debug = $options['debug'] ?? false;
+        $debugCode = $debug ? 'error_reporting(E_ALL);' : 'error_reporting(0);';
+        $optionsCode = var_export($options, true);
+        
+        return "<?php
+
+declare(strict_types=1);
+
+{$debugCode}
+
+// 引入 ThinkPHP 框架
+require_once __DIR__ . '/vendor/autoload.php';
+
+use yangweijie\\thinkRuntime\\runtime\\RuntimeManager;
+
+// 创建应用实例
+\$app = new \\think\\App();
+\$app->initialize();
+
+// 获取运行时配置
+\$config = \$app->make('runtime.config');
+
+// 创建运行时管理器
+\$runtimeManager = new RuntimeManager(\$app, \$config);
+
+// 启动 RoadRunner 适配器
+\$runtimeManager->start('roadrunner', {$optionsCode});
+";
+    }
+
+    /**
+     * 获取 RoadRunner 配置示例
+     *
+     * @return string
+     */
+    protected function getRoadRunnerConfigExample(): string
+    {
+        return '<comment>
+version: "3"
+
+server:
+  command: "php worker.php"
+  user: ""
+  group: ""
+  env:
+    - RR_MODE: http
+
+http:
+  address: 0.0.0.0:8080
+  middleware: []
+  uploads:
+    forbid: [".php", ".exe", ".bat"]
+  trusted_subnets: []
+
+logs:
+  mode: development
+  level: error
+</comment>';
     }
 }

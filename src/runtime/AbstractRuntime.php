@@ -66,18 +66,12 @@ abstract class AbstractRuntime implements RuntimeInterface
     public function handleRequest(ServerRequestInterface $request): ResponseInterface
     {
         try {
-            // 在常驻内存运行时中，需要在每次请求前重置全局状态
-            $this->resetGlobalState();
-
-            // 重置 ThinkPHP 应用状态
-            $this->resetThinkPHPState();
-
+            $this->app->initialize();
             // 将PSR-7请求转换为ThinkPHP请求
             $thinkRequest = $this->convertPsr7ToThinkRequest($request);
-
             // 处理请求
             $thinkResponse = $this->app->http->run($thinkRequest);
-
+            $this->app->http->end($thinkResponse);
             // 将ThinkPHP响应转换为PSR-7响应
             return $this->convertThinkResponseToPsr7($thinkResponse);
 
@@ -144,69 +138,33 @@ abstract class AbstractRuntime implements RuntimeInterface
     /**
      * 将PSR-7请求转换为ThinkPHP请求
      *
-     * @param ServerRequestInterface $request PSR-7请求
+     * @param ServerRequestInterface $psrRequest PSR-7请求
      * @return Request ThinkPHP请求
      */
-    protected function convertPsr7ToThinkRequest(ServerRequestInterface $request): Request
+    protected function convertPsr7ToThinkRequest(ServerRequestInterface $psrRequest): Request
     {
-        $server = [];
-        $headers = [];
+        // 解析请求方法、URI、Headers
+        $method = $psrRequest->getMethod();
+        $uri = $psrRequest->getUri();
+        $headers = $psrRequest->getHeaders();
 
-        // 转换请求头
-        foreach ($request->getHeaders() as $name => $values) {
-            $headerName = (string) $name;
-            $headers[$headerName] = implode(', ', $values);
-            $server['HTTP_' . strtoupper(str_replace('-', '_', $headerName))] = $headers[$headerName];
-        }
+        // 构建 ThinkPHP 请求对象
+        $request = $this->app->make('think\Request', [
+            'path' => $uri->getPath(),
+            'host' => $uri->getHost(),
+            'method' => $method,
+            'headers' => $headers,
+            'server' => $psrRequest->getServerParams(),
+        ]);
 
-        // 设置基本服务器变量
-        $server['REQUEST_METHOD'] = $request->getMethod();
-        $server['REQUEST_URI'] = (string) $request->getUri();
-        $server['SERVER_PROTOCOL'] = 'HTTP/' . $request->getProtocolVersion();
-        $server['QUERY_STRING'] = $request->getUri()->getQuery();
+        // 注入输入数据
+        $request->withGet($psrRequest->getQueryParams())
 
-        // 创建ThinkPHP请求
-        // 注意：这里需要根据实际的ThinkPHP版本调整Request创建方式
-        $thinkRequest = $this->app->request;
+            ->withPost($psrRequest->getParsedBody() ?? [])
 
-        // 如果没有现有请求，创建新的
-        if (!$thinkRequest) {
-            $thinkRequest = new Request();
-        }
+            ->withInput($psrRequest->getBody()->getContents());
 
-        // 设置服务器变量
-        foreach ($server as $key => $value) {
-            $_SERVER[$key] = $value;
-        }
-
-        // 设置请求头
-        foreach ($headers as $name => $value) {
-            $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $name))] = $value;
-        }
-
-        // 设置POST数据
-        $parsedBody = $request->getParsedBody();
-        if (is_array($parsedBody)) {
-            $_POST = $parsedBody;
-        }
-
-        // 设置GET数据
-        parse_str($request->getUri()->getQuery(), $queryParams);
-        $_GET = $queryParams;
-
-        // 设置请求体
-        $body = (string) $request->getBody();
-        if (!empty($body)) {
-            // 对于JSON请求，可能需要特殊处理
-            if (str_contains($headers['content-type'] ?? '', 'application/json')) {
-                $jsonData = json_decode($body, true);
-                if (is_array($jsonData)) {
-                    $_POST = array_merge($_POST, $jsonData);
-                }
-            }
-        }
-
-        return $thinkRequest;
+        return $request;
     }
 
     /**
