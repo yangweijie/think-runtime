@@ -65,8 +65,17 @@ class FpmAdapter extends AbstractRuntime implements AdapterInterface
         echo "Max children: {$config['max_children']}\n";
         echo "Note: FPM runtime is mainly for testing and development\n";
 
-        // FPM运行时主要用于测试，不需要实际启动服务器
-        // 在实际环境中，FPM由外部Web服务器（如Nginx）管理
+        // 用 PHP 内置服务器模拟 FPM 持续监听体验
+        $host = $config['host'] ?? '127.0.0.1';
+        $port = $config['port'] ?? 9000;
+        $publicDir = $this->app->getRootPath() . 'public';
+        if (!is_dir($publicDir)) {
+            $publicDir = getcwd() . '/public';
+        }
+        $cmd = sprintf('php -S %s:%d -t %s', $host, $port, escapeshellarg($publicDir));
+        echo "\n[Info] 启动 PHP 内置服务器: $cmd\n";
+        echo "[Info] 访问: http://$host:$port\n";
+        passthru($cmd);
     }
 
     /**

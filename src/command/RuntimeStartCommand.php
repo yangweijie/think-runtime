@@ -51,7 +51,19 @@ class RuntimeStartCommand extends Command
         }
 
         if ($daemon) {
-            $options['daemon'] = true;
+            $options['daemonize'] = true;
+        }
+
+        // 新增：支持 fpm runtime 的内置服务启动
+        if ($runtime === 'fpm') {
+            $output->writeln('<info>Starting FPM runtime (内置服务)...</info>');
+            // 直接用 RuntimeManager 的 start 方法统一启动
+            $app = $this->app;
+            $config = $app->make('runtime.config');
+            $runtimeManager = new RuntimeManager($app, $config);
+            $runtimeManager->start('fpm', $options);
+            $output->writeln('<info>FPM runtime started (模拟模式)。如需生产环境请用 Nginx/Apache 启动 FPM。</info>');
+            return 0;
         }
 
         // 获取应用实例和配置
