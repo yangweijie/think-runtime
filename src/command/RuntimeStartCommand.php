@@ -15,7 +15,7 @@ class RuntimeStartCommand extends Command
     {
         $this->setName('runtime:start')
              ->setDescription('Start the runtime server')
-             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, workerman, reactphp, roadrunner, bref, vercel)')
+             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, roadrunner, bref, vercel)')
              ->addOption('host', null, Option::VALUE_OPTIONAL, 'The host to listen on')
              ->addOption('port', null, Option::VALUE_OPTIONAL, 'The port to listen on')
              ->addOption('workers', null, Option::VALUE_OPTIONAL, 'The number of worker processes')
@@ -163,16 +163,7 @@ class RuntimeStartCommand extends Command
                 }
                 break;
 
-            case 'workerman':
-                if (isset($options['worker_num'])) {
-                    $options['count'] = (int) $options['worker_num'];
-                    unset($options['worker_num']);
-                }
 
-                if (isset($options['debug'])) {
-                    $options['debug'] = true;
-                }
-                break;
 
             case 'bref':
                 // Bref运行在AWS Lambda环境中，移除不适用的选项
@@ -272,14 +263,7 @@ class RuntimeStartCommand extends Command
                 }
                 break;
 
-            case 'workerman':
-                $output->writeln('<comment>Mode: Workerman</comment>');
-                $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
-                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
-                $output->writeln('<comment>Workers: ' . ($options['count'] ?? '4') . '</comment>');
-                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
-                $output->writeln('<comment>Daemon: ' . (($options['daemon'] ?? false) ? 'true' : 'false') . '</comment>');
-                break;
+
 
             case 'reactphp':
                 $output->writeln('<comment>Mode: ReactPHP</comment>');

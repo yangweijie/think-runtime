@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use yangweijie\thinkRuntime\adapter\WorkermanAdapter;
+
 use yangweijie\thinkRuntime\adapter\ReactphpAdapter;
 use yangweijie\thinkRuntime\adapter\SwooleAdapter;
 use yangweijie\thinkRuntime\adapter\RippleAdapter;
@@ -113,7 +113,6 @@ $testConfig = [
 
 // 要测试的适配器列表
 $adapters = [
-    'Workerman' => WorkermanAdapter::class,
     'ReactPHP' => ReactphpAdapter::class,
     'Swoole' => SwooleAdapter::class,
     'Ripple' => RippleAdapter::class,

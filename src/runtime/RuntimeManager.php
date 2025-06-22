@@ -19,7 +19,7 @@ use yangweijie\thinkRuntime\adapter\RoadrunnerAdapter;
 use yangweijie\thinkRuntime\adapter\FpmAdapter;
 use yangweijie\thinkRuntime\adapter\BrefAdapter;
 use yangweijie\thinkRuntime\adapter\VercelAdapter;
-use yangweijie\thinkRuntime\adapter\WorkermanAdapter;
+
 
 /**
  * 运行时管理器
@@ -55,7 +55,6 @@ class RuntimeManager
         'roadrunner' => RoadrunnerAdapter::class,
         'bref' => BrefAdapter::class,
         'vercel' => VercelAdapter::class,
-        'workerman' => WorkermanAdapter::class,
     ];
 
     /**
