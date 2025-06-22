@@ -66,17 +66,27 @@ abstract class AbstractRuntime implements RuntimeInterface
     public function handleRequest(ServerRequestInterface $request): ResponseInterface
     {
         try {
-            $this->app->initialize();
+            // 检查应用是否已初始化
+            if (!$this->app->initialized()) {
+                $this->app->initialize();
+            }
+
+            // 重置请求相关的运行时状态
+            $this->app->delete('think\Request');
+            $this->app->delete('think\Response');
+
             // 将PSR-7请求转换为ThinkPHP请求
             $thinkRequest = $this->convertPsr7ToThinkRequest($request);
+
             // 处理请求
             $thinkResponse = $this->app->http->run($thinkRequest);
-            $this->app->http->end($thinkResponse);
-            // 将ThinkPHP响应转换为PSR-7响应
-            return $this->convertThinkResponseToPsr7($thinkResponse);
 
+            // 执行必要的结束处理
+            $this->app->http->end($thinkResponse);
+
+            // 转换并返回响应
+            return $this->convertThinkResponseToPsr7($thinkResponse);
         } catch (Throwable $e) {
-            // 错误处理
             return $this->handleError($e);
         }
     }
