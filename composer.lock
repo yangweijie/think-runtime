@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "57b4fa1a9ef314042aed811b74c1a9ba",
+    "content-hash": "52ce36e628aee2285d16811c594f76cf",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -5089,12 +5089,116 @@
                 }
             ],
             "time": "2024-03-03T12:36:25+00:00"
+        },
+        {
+            "name": "workerman/coroutine",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/workerman-php/coroutine.git",
+                "reference": "e59ee1e7592d4832d885244695006abf68da91fb"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://mirrors.huaweicloud.com/repository/php/workerman/coroutine/v1.0.0/workerman-coroutine-v1.0.0.zip",
+                "reference": "e59ee1e7592d4832d885244695006abf68da91fb",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.1",
+                "workerman/workerman": "5.1.0 || dev-master"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.0",
+                "psr/log": "*"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Workerman\\Coroutine\\": "src"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Workerman coroutine",
+            "time": "2025-01-20T14:24:34+00:00"
+        },
+        {
+            "name": "workerman/workerman",
+            "version": "dev-master",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/walkor/workerman.git",
+                "reference": "3365ea2f46c9c59b46386a175994d5a6168270a4"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://mirrors.huaweicloud.com/repository/php/workerman/workerman/dev-master/workerman-workerman-dev-master.zip",
+                "reference": "3365ea2f46c9c59b46386a175994d5a6168270a4",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "php": ">=8.1",
+                "workerman/coroutine": "^1.0 || dev-main"
+            },
+            "conflict": {
+                "ext-swow": "<v1.0.0"
+            },
+            "require-dev": {
+                "guzzlehttp/guzzle": "^7.0",
+                "mockery/mockery": "^1.6",
+                "pestphp/pest": "2.x-dev",
+                "phpstan/phpstan": "1.11.x-dev"
+            },
+            "suggest": {
+                "ext-event": "For better performance. "
+            },
+            "default-branch": true,
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Workerman\\": "src"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "walkor",
+                    "email": "walkor@workerman.net",
+                    "homepage": "https://www.workerman.net",
+                    "role": "Developer"
+                }
+            ],
+            "description": "An asynchronous event driven PHP framework for easily building fast, scalable network applications.",
+            "homepage": "https://www.workerman.net",
+            "keywords": [
+                "asynchronous",
+                "event-loop",
+                "framework",
+                "http"
+            ],
+            "funding": [
+                {
+                    "url": "https://opencollective.com/workerman",
+                    "type": "open_collective"
+                },
+                {
+                    "url": "https://www.patreon.com/walkor",
+                    "type": "patreon"
+                }
+            ],
+            "time": "2025-02-03T10:57:04+00:00"
         }
     ],
     "aliases": [],
     "minimum-stability": "dev",
     "stability-flags": {
-        "mattvb91/caddy-php": 20
+        "mattvb91/caddy-php": 20,
+        "workerman/workerman": 20
     },
     "prefer-stable": false,
     "prefer-lowest": false,

@@ -606,6 +606,9 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                     $_FILES = $originalFiles;
                     $_COOKIE = $originalCookie;
                     $_SERVER = $originalServer;
+                    // 明确销毁克隆的应用实例
+                    $this->destroyAppInstance($newApp);
+                    unset($newApp);
                 }
 
                 // 重置调试状态，防止think-trace累积
@@ -843,7 +846,7 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
-     * 设置协程上下文
+     * 设置协程上下文（轻量化存储）
      *
      * @param SwooleRequest $request
      * @param float $startTime
@@ -853,11 +856,17 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     {
         if (class_exists('\Swoole\Coroutine')) {
             $cid = Coroutine::getCid();
+            // 只存储必要的信息，避免存储完整对象
             $this->coroutineContext[$cid] = [
                 'request_id' => uniqid(),
                 'start_time' => $startTime,
-                'request' => $request,
+                'method' => $request->getMethod(),
+                'uri' => $request->server['request_uri'] ?? '/',
+                'created_at' => time(),
             ];
+
+            // 检查上下文数量，防止无限增长
+            $this->checkCoroutineContextSize();
         }
     }
 
@@ -1251,5 +1260,94 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
     {
         // 默认实现：回显消息
         return "Echo: " . $frame->data;
+    }
+
+    /**
+     * 检查协程上下文大小
+     *
+     * @return void
+     */
+    protected function checkCoroutineContextSize(): void
+    {
+        $maxSize = 1000; // 最大上下文数量
+
+        if (count($this->coroutineContext) > $maxSize) {
+            // 强制清理最旧的上下文
+            $this->forceCleanupOldestCoroutineContexts((int)($maxSize * 0.8));
+        }
+    }
+
+    /**
+     * 强制清理最旧的协程上下文
+     *
+     * @param int $targetSize
+     * @return void
+     */
+    protected function forceCleanupOldestCoroutineContexts(int $targetSize): void
+    {
+        // 按创建时间排序
+        uasort($this->coroutineContext, function($a, $b) {
+            return ($a['created_at'] ?? 0) <=> ($b['created_at'] ?? 0);
+        });
+
+        $currentSize = count($this->coroutineContext);
+        $toRemove = $currentSize - $targetSize;
+
+        if ($toRemove > 0) {
+            $removed = 0;
+            foreach ($this->coroutineContext as $cid => $context) {
+                if ($removed >= $toRemove) {
+                    break;
+                }
+                unset($this->coroutineContext[$cid]);
+                $removed++;
+            }
+
+            echo "Swoole force cleaned {$removed} oldest coroutine contexts due to size limit\n";
+            gc_collect_cycles();
+        }
+    }
+
+    /**
+     * 销毁应用实例
+     *
+     * @param mixed $app
+     * @return void
+     */
+    protected function destroyAppInstance($app): void
+    {
+        if (!$app) {
+            return;
+        }
+
+        try {
+            // 如果应用有销毁方法，调用它
+            if (method_exists($app, 'destroy')) {
+                $app->destroy();
+            } elseif (method_exists($app, 'terminate')) {
+                $app->terminate();
+            } elseif (method_exists($app, 'shutdown')) {
+                $app->shutdown();
+            }
+        } catch (Throwable $e) {
+            // 忽略销毁过程中的错误
+            error_log("Swoole: Error destroying app instance: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * 获取内存使用统计
+     *
+     * @return array
+     */
+    public function getMemoryStats(): array
+    {
+        return [
+            'current_memory' => memory_get_usage(true),
+            'current_memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            'peak_memory_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+            'coroutine_context_count' => count($this->coroutineContext),
+            'request_count' => $this->requestCounter,
+        ];
     }
 }

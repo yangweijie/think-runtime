@@ -42,9 +42,10 @@
     "require-dev": {
         "pestphp/pest": "^1.23",
         "phpunit/phpunit": "^9.6|^10.0",
-        "swoole/ide-helper": "^5.0",
         "spiral/roadrunner": "^2.0|^3.0",
-        "spiral/roadrunner-http": "^2.0|^3.0"
+        "spiral/roadrunner-http": "^2.0|^3.0",
+        "swoole/ide-helper": "^5.0",
+        "workerman/workerman": "dev-master"
     },
     "suggest": {
         "ext-swoole": "Required for Swoole runtime adapter",

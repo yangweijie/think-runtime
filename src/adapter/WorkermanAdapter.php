@@ -38,7 +38,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     protected ?ServerRequestCreator $requestCreator = null;
 
     /**
-     * 连接上下文存储
+     * 连接上下文存储（轻量化存储）
      *
      * @var array
      */
@@ -50,6 +50,17 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      * @var array
      */
     protected array $middlewares = [];
+
+    /**
+     * 内存使用统计
+     *
+     * @var array
+     */
+    protected array $memoryStats = [
+        'peak_usage' => 0,
+        'request_count' => 0,
+        'last_cleanup' => 0,
+    ];
 
     /**
      * 静态文件 MIME 类型映射
@@ -128,8 +139,15 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         ],
         // 定时器配置
         'timer' => [
-            'enable' => false,
-            'interval' => 60, // 秒
+            'enable' => true,
+            'interval' => 30, // 秒，更频繁的清理
+        ],
+        // 内存管理配置
+        'memory' => [
+            'enable_gc' => true,
+            'gc_interval' => 100, // 每100个请求强制GC一次
+            'context_cleanup_interval' => 60, // 上下文清理间隔（秒）
+            'max_context_size' => 1000, // 最大上下文数量
         ],
     ];
 
@@ -331,6 +349,12 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     {
         $startTime = microtime(true);
 
+        // 增加请求计数
+        $this->memoryStats['request_count']++;
+
+        // 定期强制垃圾回收
+        $this->performPeriodicGC();
+
         try {
             // 设置连接上下文
             $this->setConnectionContext($connection, $request, $startTime);
@@ -439,6 +463,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
                 $_FILES = $originalFiles;
                 $_COOKIE = $originalCookie;
                 $_SERVER = $originalServer;
+
+                // 明确销毁克隆的应用实例
+                $this->destroyAppInstance($newApp);
+                unset($newApp);
             }
 
             // 记录请求指标
@@ -449,6 +477,12 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         } finally {
             // 清理连接上下文
             $this->clearConnectionContext($connection);
+
+            // 更新内存统计
+            $this->updateMemoryStats();
+
+            // 定期清理过期上下文
+            $this->performPeriodicCleanup();
         }
     }
 
@@ -511,7 +545,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
-     * 设置连接上下文
+     * 设置连接上下文（轻量化存储）
      *
      * @param TcpConnection $connection
      * @param WorkermanRequest $request
@@ -521,12 +555,18 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     protected function setConnectionContext(TcpConnection $connection, WorkermanRequest $request, float $startTime): void
     {
         $connectionId = spl_object_id($connection);
+
+        // 只存储必要的信息，避免存储完整对象
         $this->connectionContext[$connectionId] = [
             'request_id' => uniqid(),
             'start_time' => $startTime,
-            'request' => $request,
-            'connection' => $connection,
+            'method' => $request->method(),
+            'uri' => $request->uri(),
+            'created_at' => time(), // 使用 time() 便于清理比较
         ];
+
+        // 检查上下文数量，防止无限增长
+        $this->checkContextSize();
     }
 
     /**
@@ -895,6 +935,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
                 // 内存使用检查
                 $this->checkMemoryUsage();
+
+                // 强制垃圾回收
+                gc_collect_cycles();
+
+                // 输出内存统计
+                $stats = $this->getMemoryStats();
+                echo "Memory Stats - Current: {$stats['current_memory_mb']}MB, Peak: {$stats['peak_memory_mb']}MB, Contexts: {$stats['context_count']}, Requests: {$stats['request_count']}\n";
             });
         }
     }
@@ -907,11 +954,23 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     protected function cleanupExpiredContext(): void
     {
         $now = time();
+        $cleaned = 0;
+
         foreach ($this->connectionContext as $id => $context) {
-            // 清理超过5分钟的上下文
-            if ($now - $context['start_time'] > 300) {
+            // 修复：使用 created_at 而不是 start_time 进行比较
+            if ($now - ($context['created_at'] ?? $now) > 300) {
                 unset($this->connectionContext[$id]);
+                $cleaned++;
             }
+        }
+
+        if ($cleaned > 0) {
+            echo "Cleaned {$cleaned} expired contexts, remaining: " . count($this->connectionContext) . "\n";
+        }
+
+        // 强制垃圾回收
+        if ($cleaned > 10) {
+            gc_collect_cycles();
         }
     }
 
@@ -1040,5 +1099,158 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     public function terminate(): void
     {
         $this->stop();
+    }
+
+    /**
+     * 执行定期垃圾回收
+     *
+     * @return void
+     */
+    protected function performPeriodicGC(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+
+        if (!($config['memory']['enable_gc'] ?? true)) {
+            return;
+        }
+
+        $gcInterval = $config['memory']['gc_interval'] ?? 100;
+
+        if ($this->memoryStats['request_count'] % $gcInterval === 0) {
+            $beforeMemory = memory_get_usage(true);
+            gc_collect_cycles();
+            $afterMemory = memory_get_usage(true);
+
+            $freed = $beforeMemory - $afterMemory;
+            if ($freed > 0) {
+                echo "GC freed " . round($freed / 1024 / 1024, 2) . "MB memory\n";
+            }
+        }
+    }
+
+    /**
+     * 更新内存统计
+     *
+     * @return void
+     */
+    protected function updateMemoryStats(): void
+    {
+        $currentMemory = memory_get_usage(true);
+        $peakMemory = memory_get_peak_usage(true);
+
+        if ($peakMemory > $this->memoryStats['peak_usage']) {
+            $this->memoryStats['peak_usage'] = $peakMemory;
+        }
+    }
+
+    /**
+     * 执行定期清理
+     *
+     * @return void
+     */
+    protected function performPeriodicCleanup(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $cleanupInterval = $config['memory']['context_cleanup_interval'] ?? 60;
+
+        $now = time();
+        if ($now - $this->memoryStats['last_cleanup'] > $cleanupInterval) {
+            $this->cleanupExpiredContext();
+            $this->memoryStats['last_cleanup'] = $now;
+        }
+    }
+
+    /**
+     * 检查上下文大小
+     *
+     * @return void
+     */
+    protected function checkContextSize(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $maxSize = $config['memory']['max_context_size'] ?? 1000;
+
+        if (count($this->connectionContext) > $maxSize) {
+            // 强制清理最旧的上下文
+            $this->forceCleanupOldestContexts((int)($maxSize * 0.8)); // 清理到80%
+        }
+    }
+
+    /**
+     * 强制清理最旧的上下文
+     *
+     * @param int $targetSize
+     * @return void
+     */
+    protected function forceCleanupOldestContexts(int $targetSize): void
+    {
+        // 按创建时间排序
+        uasort($this->connectionContext, function($a, $b) {
+            return ($a['created_at'] ?? 0) <=> ($b['created_at'] ?? 0);
+        });
+
+        $currentSize = count($this->connectionContext);
+        $toRemove = $currentSize - $targetSize;
+
+        if ($toRemove > 0) {
+            $removed = 0;
+            foreach ($this->connectionContext as $id => $context) {
+                if ($removed >= $toRemove) {
+                    break;
+                }
+                unset($this->connectionContext[$id]);
+                $removed++;
+            }
+
+            echo "Force cleaned {$removed} oldest contexts due to size limit\n";
+            gc_collect_cycles();
+        }
+    }
+
+    /**
+     * 销毁应用实例
+     *
+     * @param mixed $app
+     * @return void
+     */
+    protected function destroyAppInstance($app): void
+    {
+        if (!$app) {
+            return;
+        }
+
+        try {
+            // 如果应用有销毁方法，调用它
+            if (method_exists($app, 'destroy')) {
+                $app->destroy();
+            } elseif (method_exists($app, 'terminate')) {
+                $app->terminate();
+            } elseif (method_exists($app, 'shutdown')) {
+                $app->shutdown();
+            }
+
+            // 清理可能的循环引用
+            if (method_exists($app, '__destruct')) {
+                // 让PHP自然处理析构
+            }
+        } catch (Throwable $e) {
+            // 忽略销毁过程中的错误
+            error_log("Error destroying app instance: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * 获取内存使用统计
+     *
+     * @return array
+     */
+    public function getMemoryStats(): array
+    {
+        return array_merge($this->memoryStats, [
+            'current_memory' => memory_get_usage(true),
+            'current_memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            'peak_memory_mb' => round($this->memoryStats['peak_usage'] / 1024 / 1024, 2),
+            'context_count' => count($this->connectionContext),
+        ]);
     }
 }

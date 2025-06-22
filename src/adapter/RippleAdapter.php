@@ -386,25 +386,38 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
         $this->lastRequestTime = $startTime;
         $this->requestTimestamps[] = $startTime;
         
-        // 检查内存使用情况，如果内存使用率超过80%则尝试清理
+        // 检查内存使用情况，如果内存使用率超过60%则尝试清理（降低阈值）
         $memoryInfo = $this->checkMemoryUsage();
         if (isset($memoryInfo['usage_percent'])) {
             $usagePercent = (float)rtrim($memoryInfo['usage_percent'], '%');
-            if ($usagePercent > 80) {
+            if ($usagePercent > 60) { // 从80%降低到60%
                 $this->logWarning('High memory usage detected before processing request', [
                     'usage_percent' => $memoryInfo['usage_percent'],
                     'current_usage' => $memoryInfo['current_usage'],
                     'memory_limit' => $memoryInfo['memory_limit']
                 ]);
+
+                // 主动触发垃圾回收
+                gc_collect_cycles();
             }
         }
         
-        // 清理过期的请求时间戳（保留最近1小时的记录）
-        $oneHourAgo = $startTime - 3600;
-        $this->requestTimestamps = array_filter($this->requestTimestamps, function($timestamp) use ($oneHourAgo) {
-            return $timestamp > $oneHourAgo;
+        // 清理过期的请求时间戳（保留最近10分钟的记录，减少内存占用）
+        $tenMinutesAgo = $startTime - 600; // 从1小时改为10分钟
+        $this->requestTimestamps = array_filter($this->requestTimestamps, function($timestamp) use ($tenMinutesAgo) {
+            return $timestamp > $tenMinutesAgo;
         });
+
+        // 限制时间戳数组大小，防止无限增长
+        if (count($this->requestTimestamps) > 1000) {
+            $this->requestTimestamps = array_slice($this->requestTimestamps, -500); // 只保留最近500个
+        }
         sort($this->requestTimestamps);
+
+        // 定期强制垃圾回收
+        if ($this->requestCount % 100 === 0) {
+            gc_collect_cycles();
+        }
         
         // 获取请求信息
         $requestUri = $request->getRequestUri() ?? '/';
@@ -484,7 +497,7 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
             $memoryLimit = $this->getMemoryLimitInBytes();
             $memoryPeakRatio = $memoryUsage['peak_bytes'] / $memoryLimit * 100;
             
-            if ($memoryPeakRatio > 90) {
+            if ($memoryPeakRatio > 70) { // 从90%降低到70%
                 $this->logWarning('High memory usage after request processing', [
                     'request_id' => $requestId,
                     'peak_memory' => $memoryUsage['peak'],
@@ -493,9 +506,12 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
                     'uri' => $requestUri,
                     'time_taken' => $processTimeMs . 'ms'
                 ]);
-                
-                // 如果内存使用率超过90%，触发内存清理
+
+                // 如果内存使用率超过70%，触发内存清理
                 $this->checkMemoryUsage(true);
+
+                // 强制垃圾回收
+                gc_collect_cycles();
             }
             
             $this->logInfo('Request completed', $logData);

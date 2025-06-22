@@ -53,6 +53,24 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     protected array $tempUploadFiles = [];
 
     /**
+     * 请求计数器
+     *
+     * @var int
+     */
+    protected int $requestCount = 0;
+
+    /**
+     * 内存使用统计
+     *
+     * @var array
+     */
+    protected array $memoryStats = [
+        'peak_usage' => 0,
+        'request_count' => 0,
+        'last_cleanup' => 0,
+    ];
+
+    /**
      * 默认配置
      *
      * @var array
@@ -70,6 +88,13 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
         'access_log' => true,
         'error_log' => true,
         'websocket' => false,
+        // 内存管理配置
+        'memory' => [
+            'enable_gc' => true,
+            'gc_interval' => 100, // 每100个请求GC一次
+            'cleanup_interval' => 60, // 60秒清理一次临时文件
+            'max_temp_files' => 1000, // 最大临时文件数量
+        ],
         'ssl' => [
             'enabled' => false,
             'cert' => '',
@@ -273,6 +298,15 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function handleReactRequest(ServerRequestInterface $request): PromiseInterface
     {
+        $startTime = microtime(true);
+
+        // 增加请求计数
+        $this->requestCount++;
+        $this->memoryStats['request_count']++;
+
+        // 定期强制垃圾回收
+        $this->performPeriodicGC();
+
         try {
             // 保存原始全局变量
             $originalGet = $_GET;
@@ -334,9 +368,8 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
                 'argc' => 0,
             ]);
 
-            // 在每次请求前创建新的应用实例
-            $appClass = get_class($this->app);
-            $newApp = new $appClass();
+            // 在每次请求前创建新的应用实例（轻量化克隆）
+            $newApp = clone $this->app;
 
             // 初始化新的应用实例
             if (method_exists($newApp, 'initialize')) {
@@ -390,6 +423,13 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
                 $_SERVER = $originalServer;
                 // 清理临时上传文件
                 $this->cleanupTempUploadFiles();
+                // 明确销毁克隆的应用实例
+                $this->destroyAppInstance($newApp);
+                unset($newApp);
+                // 更新内存统计
+                $this->updateMemoryStats();
+                // 定期清理
+                $this->performPeriodicCleanup();
             }
 
         } catch (Throwable $e) {
@@ -462,12 +502,18 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
     protected function cleanupTempUploadFiles(): void
     {
         if (!empty($this->tempUploadFiles)) {
+            $cleaned = 0;
             foreach ($this->tempUploadFiles as $tempFile) {
                 if (file_exists($tempFile)) {
                     @unlink($tempFile);
+                    $cleaned++;
                 }
             }
             $this->tempUploadFiles = [];
+
+            if ($cleaned > 0) {
+                echo "Cleaned {$cleaned} temporary upload files\n";
+            }
         }
     }
 
@@ -547,5 +593,138 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
         if ($this->loop !== null) {
             $this->loop->cancelTimer($timer);
         }
+    }
+
+    /**
+     * 执行定期垃圾回收
+     *
+     * @return void
+     */
+    protected function performPeriodicGC(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+
+        if (!($config['memory']['enable_gc'] ?? true)) {
+            return;
+        }
+
+        $gcInterval = $config['memory']['gc_interval'] ?? 100;
+
+        if ($this->requestCount % $gcInterval === 0) {
+            $beforeMemory = memory_get_usage(true);
+            gc_collect_cycles();
+            $afterMemory = memory_get_usage(true);
+
+            $freed = $beforeMemory - $afterMemory;
+            if ($freed > 0) {
+                echo "ReactPHP GC freed " . round($freed / 1024 / 1024, 2) . "MB memory\n";
+            }
+        }
+    }
+
+    /**
+     * 更新内存统计
+     *
+     * @return void
+     */
+    protected function updateMemoryStats(): void
+    {
+        $currentMemory = memory_get_usage(true);
+        $peakMemory = memory_get_peak_usage(true);
+
+        if ($peakMemory > $this->memoryStats['peak_usage']) {
+            $this->memoryStats['peak_usage'] = $peakMemory;
+        }
+    }
+
+    /**
+     * 执行定期清理
+     *
+     * @return void
+     */
+    protected function performPeriodicCleanup(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $cleanupInterval = $config['memory']['cleanup_interval'] ?? 60;
+
+        $now = time();
+        if ($now - $this->memoryStats['last_cleanup'] > $cleanupInterval) {
+            $this->forceCleanupTempFiles();
+            $this->memoryStats['last_cleanup'] = $now;
+        }
+    }
+
+    /**
+     * 强制清理临时文件
+     *
+     * @return void
+     */
+    protected function forceCleanupTempFiles(): void
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $maxTempFiles = $config['memory']['max_temp_files'] ?? 1000;
+
+        if (count($this->tempUploadFiles) > $maxTempFiles) {
+            $toRemove = count($this->tempUploadFiles) - (int)($maxTempFiles * 0.8);
+            $removed = 0;
+
+            foreach ($this->tempUploadFiles as $index => $tempFile) {
+                if ($removed >= $toRemove) {
+                    break;
+                }
+                if (file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+                unset($this->tempUploadFiles[$index]);
+                $removed++;
+            }
+
+            if ($removed > 0) {
+                echo "ReactPHP force cleaned {$removed} temp files due to limit\n";
+                gc_collect_cycles();
+            }
+        }
+    }
+
+    /**
+     * 销毁应用实例
+     *
+     * @param mixed $app
+     * @return void
+     */
+    protected function destroyAppInstance($app): void
+    {
+        if (!$app) {
+            return;
+        }
+
+        try {
+            // 如果应用有销毁方法，调用它
+            if (method_exists($app, 'destroy')) {
+                $app->destroy();
+            } elseif (method_exists($app, 'terminate')) {
+                $app->terminate();
+            } elseif (method_exists($app, 'shutdown')) {
+                $app->shutdown();
+            }
+        } catch (Throwable $e) {
+            // 忽略销毁过程中的错误
+            error_log("ReactPHP: Error destroying app instance: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * 获取内存使用统计
+     *
+     * @return array
+     */
+    public function getMemoryStats(): array
+    {
+        return array_merge($this->memoryStats, [
+            'current_memory' => memory_get_usage(true),
+            'current_memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            'peak_memory_mb' => round($this->memoryStats['peak_usage'] / 1024 / 1024, 2),
+            'temp_files_count' => count($this->tempUploadFiles),
+        ]);
     }
 }
