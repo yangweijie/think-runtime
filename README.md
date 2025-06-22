@@ -24,7 +24,6 @@
 | FrankenPHP | 现代PHP应用服务器，支持HTTP/2、HTTP/3 | 95 | frankenphp 二进制文件 |
 | Workerman | 高性能PHP socket服务器框架 | 93 | workerman/workerman |
 | ReactPHP | 事件驱动的异步HTTP服务器 | 92 | react/http, react/socket |
-| Ripple | 基于PHP Fiber的高性能协程HTTP服务器 | 91 | cloudtay/ripple, PHP 8.1+ |
 | RoadRunner | 基于Go的高性能应用服务器 | 90 | spiral/roadrunner |
 | Bref | AWS Lambda serverless运行时 | 85 | bref/bref |
 | Vercel | Vercel serverless functions运行时 | 80 | vercel/php |
@@ -96,7 +95,6 @@ return [
         'frankenphp',
         'workerman',
         'reactphp',
-        'ripple',
         'roadrunner',
         'bref',
         'vercel',
@@ -132,7 +130,6 @@ php think runtime:start swoole
 php think runtime:start frankenphp
 php think runtime:start workerman
 php think runtime:start reactphp
-php think runtime:start ripple
 php think runtime:start bref
 php think runtime:start vercel
 
@@ -141,7 +138,6 @@ php think runtime:start swoole --host=127.0.0.1 --port=8080 --workers=8
 php think runtime:start frankenphp --port=8080 --workers=4
 php think runtime:start workerman --host=0.0.0.0 --port=8080 --workers=4
 php think runtime:start reactphp --host=0.0.0.0 --port=8080
-php think runtime:start ripple --host=0.0.0.0 --port=8080 --workers=4
 ```
 
 ### 3. 查看运行时信息
@@ -304,16 +300,14 @@ $manager->registerAdapter('custom', CustomAdapter::class);
 ],
 ```
 
-### Ripple配置
+### RoadRunner配置
 
 ```php
-'ripple' => [
+'roadrunner' => [
     'host' => '0.0.0.0',           // 监听主机
     'port' => 8080,                // 监听端口
     'worker_num' => 4,             // Worker进程数
     'max_connections' => 10000,    // 最大连接数
-    'max_coroutines' => 100000,    // 最大协程数
-    'coroutine_pool_size' => 1000, // 协程池大小
     'timeout' => 30,               // 连接超时时间（秒）
     'enable_keepalive' => true,    // 启用Keep-Alive
     'keepalive_timeout' => 60,     // Keep-Alive超时时间
@@ -897,9 +891,6 @@ php think runtime:start frankenphp --port=8080 --workers=4 --debug
 
 # 启动Workerman服务器
 php think runtime:start workerman --port=8080 --workers=4 --daemon
-
-# 启动Ripple服务器
-php think runtime:start ripple --host=0.0.0.0 --port=8080 --workers=4
 
 # 启动RoadRunner服务器
 php think runtime:start roadrunner --debug

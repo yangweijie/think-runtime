@@ -29,8 +29,8 @@ return [
         'swoole' => [
             'host' => env('SWOOLE_HOST', '0.0.0.0'),
             'port' => env('SWOOLE_PORT', 9501),
-            'mode' => SWOOLE_PROCESS,
-            'sock_type' => SWOOLE_SOCK_TCP,
+            'mode' => defined('SWOOLE_PROCESS') ? SWOOLE_PROCESS : null,
+            'sock_type' => defined('SWOOLE_SOCK_TCP') ? SWOOLE_SOCK_TCP : null,
             'settings' => [
                 // 工作进程数
                 'worker_num' => env('SWOOLE_WORKER_NUM', 4),

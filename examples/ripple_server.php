@@ -12,7 +12,7 @@ use think\App;
 use yangweijie\thinkRuntime\runtime\RuntimeManager;
 
 // 引入自动加载
-require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 // 检查PHP版本
 if (version_compare(PHP_VERSION, '8.1.0', '<')) {
@@ -21,7 +21,7 @@ if (version_compare(PHP_VERSION, '8.1.0', '<')) {
 }
 
 // 创建应用实例
-$app = new App();
+$app = new App(__DIR__);
 
 // 初始化应用
 $app->initialize();

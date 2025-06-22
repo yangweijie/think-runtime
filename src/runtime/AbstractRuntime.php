@@ -175,9 +175,21 @@ abstract class AbstractRuntime implements RuntimeInterface
      */
     protected function convertThinkResponseToPsr7(Response $response): ResponseInterface
     {
+        $headers = $response->getHeader();
+
+        // 确保 headers 是数组
+        if (!is_array($headers)) {
+            $headers = [];
+        }
+
+        // 设置默认的 Content-Type 如果未设置
+        if (empty($headers['Content-Type']) && empty($headers['content-type'])) {
+            $headers['Content-Type'] = 'text/html; charset=utf-8';
+        }
+
         return new Psr7Response(
             $response->getCode(),
-            $response->getHeader(),
+            $headers,
             $response->getContent()
         );
     }

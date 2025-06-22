@@ -15,12 +15,16 @@ class RuntimeStartCommand extends Command
     {
         $this->setName('runtime:start')
              ->setDescription('Start the runtime server')
-             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, workerman, reactphp, ripple, roadrunner, bref, vercel)')
+             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, workerman, reactphp, roadrunner, bref, vercel)')
              ->addOption('host', null, Option::VALUE_OPTIONAL, 'The host to listen on')
              ->addOption('port', null, Option::VALUE_OPTIONAL, 'The port to listen on')
              ->addOption('workers', null, Option::VALUE_OPTIONAL, 'The number of worker processes')
              ->addOption('debug', null, Option::VALUE_NONE, 'Enable debug mode')
-             ->addOption('daemon', null, Option::VALUE_NONE, 'Run the server in daemon mode');
+             ->addOption('daemon', null, Option::VALUE_NONE, 'Run the server in daemon mode')
+             ->addOption('hide-index', null, Option::VALUE_NONE, 'Hide index.php in URLs (FrankenPHP only)')
+             ->addOption('show-index', null, Option::VALUE_NONE, 'Show index.php in URLs (FrankenPHP only)')
+             ->addOption('https', null, Option::VALUE_NONE, 'Enable HTTPS (FrankenPHP only)')
+             ->addOption('no-rewrite', null, Option::VALUE_NONE, 'Disable URL rewriting (FrankenPHP only)');
     }
 
     protected function execute(Input $input, Output $output): int
@@ -31,6 +35,10 @@ class RuntimeStartCommand extends Command
         $workers = $input->getOption('workers');
         $debug = $input->getOption('debug');
         $daemon = $input->getOption('daemon');
+        $hideIndex = $input->getOption('hide-index');
+        $showIndex = $input->getOption('show-index');
+        $https = $input->getOption('https');
+        $noRewrite = $input->getOption('no-rewrite');
 
         $options = [];
 
@@ -52,6 +60,23 @@ class RuntimeStartCommand extends Command
 
         if ($daemon) {
             $options['daemonize'] = true;
+        }
+
+        // FrankenPHP 特有选项
+        if ($hideIndex) {
+            $options['hide_index'] = true;
+        }
+
+        if ($showIndex) {
+            $options['hide_index'] = false;
+        }
+
+        if ($https) {
+            $options['auto_https'] = true;
+        }
+
+        if ($noRewrite) {
+            $options['enable_rewrite'] = false;
         }
 
         // 新增：支持 fpm runtime 的内置服务启动
@@ -226,6 +251,25 @@ class RuntimeStartCommand extends Command
                 $output->writeln('<comment>Listen: ' . ($options['listen'] ?? ':8080') . '</comment>');
                 $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
                 $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Hide Index: ' . (($options['hide_index'] ?? true) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>URL Rewrite: ' . (($options['enable_rewrite'] ?? true) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Auto HTTPS: ' . (($options['auto_https'] ?? false) ? 'true' : 'false') . '</comment>');
+
+                // 显示访问URL示例
+                $port = str_replace(':', '', $options['listen'] ?? ':8080');
+                $protocol = ($options['auto_https'] ?? false) ? 'https' : 'http';
+                $hideIndex = $options['hide_index'] ?? true;
+
+                $output->writeln('');
+                $output->writeln('<info>Access URLs:</info>');
+                if ($hideIndex) {
+                    $output->writeln('<comment>  ' . $protocol . '://localhost' . $port . '/</comment>');
+                    $output->writeln('<comment>  ' . $protocol . '://localhost' . $port . '/index/hello</comment>');
+                    $output->writeln('<comment>  ' . $protocol . '://localhost' . $port . '/api/user/list</comment>');
+                } else {
+                    $output->writeln('<comment>  ' . $protocol . '://localhost' . $port . '/index.php</comment>');
+                    $output->writeln('<comment>  ' . $protocol . '://localhost' . $port . '/index.php/index/hello</comment>');
+                }
                 break;
 
             case 'workerman':
@@ -247,7 +291,7 @@ class RuntimeStartCommand extends Command
             case 'ripple':
                 $output->writeln('<comment>Mode: Ripple</comment>');
                 $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
-                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8000') . '</comment>');
                 $output->writeln('<comment>Workers: ' . ($options['worker_num'] ?? '4') . '</comment>');
                 $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
                 break;
