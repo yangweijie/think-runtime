@@ -559,18 +559,12 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                     'argc' => 0,
                 ]);
 
-                // 在每次请求前创建新的应用实例
-                $appClass = get_class($this->app);
-                $newApp = new $appClass();
-
-                // 初始化新的应用实例
-                if (method_exists($newApp, 'initialize')) {
-                    $newApp->initialize();
-                }
+                // 复用现有应用实例，避免每次请求都创建新实例
+                // 这是内存泄漏的主要原因
 
                 // 更新应用中的 Request 对象信息
-                if ($newApp->has('request')) {
-                    $appRequest = $newApp->request;
+                if ($this->app->has('request')) {
+                    $appRequest = $this->app->request;
                     // 更新 Request 对象的 server 属性
                     if (property_exists($appRequest, 'server')) {
                         $reflection = new \ReflectionClass($appRequest);
@@ -587,28 +581,18 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
                     }
                 }
 
-                // 临时保存原应用实例
-                $originalApp = $this->app;
-                // 设置新的应用实例
-                $this->app = $newApp;
-
                 try {
                     // 处理动态请求
                     $psr7Request = $this->convertSwooleRequestToPsr7($request);
                     $psr7Response = $this->handleRequest($psr7Request);
                     $this->sendSwooleResponse($response, $psr7Response);
                 } finally {
-                    // 恢复原应用实例
-                    $this->app = $originalApp;
                     // 恢复原始全局变量
                     $_GET = $originalGet;
                     $_POST = $originalPost;
                     $_FILES = $originalFiles;
                     $_COOKIE = $originalCookie;
                     $_SERVER = $originalServer;
-                    // 明确销毁克隆的应用实例
-                    $this->destroyAppInstance($newApp);
-                    unset($newApp);
                 }
 
                 // 重置调试状态，防止think-trace累积
