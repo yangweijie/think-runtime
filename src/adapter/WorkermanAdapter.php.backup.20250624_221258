@@ -18,15 +18,9 @@ use yangweijie\thinkRuntime\contract\AdapterInterface;
 use yangweijie\thinkRuntime\runtime\AbstractRuntime;
 
 /**
- * Workerman适配器 - Session 修复版本
+ * Workerman适配器
  * 基于Workerman提供高性能HTTP服务器支持
- * 修复了 session_id 变化的问题，参考 ReactPHP adapter 实现
- *
- * 修复内容：
- * 1. 智能 Cookie 合并机制，保留 session 相关的 cookie
- * 2. 两种运行模式：优化模式和 ReactPHP 模式
- * 3. 详细的调试和监控功能
- * 4. 向后兼容原有配置
+ * 参考webman框架的实现模式
  */
 class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 {
@@ -97,14 +91,6 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         'context' => [],
         'reuse_port' => false,
         'transport' => 'tcp',
-        
-        // Session 修复配置
-        'session' => [
-            'enable_fix' => true,           // 启用 session 修复
-            'create_new_app' => false,      // 是否每次请求创建新应用实例（类似 ReactPHP）
-            'preserve_session_cookies' => true, // 保留 session cookie
-            'debug_session' => false,       // 调试 session 处理
-        ],
         
         // 内存管理配置
         'memory' => [
@@ -213,12 +199,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
         $config = array_merge($this->defaultConfig, $this->config);
 
-        echo "Workerman HTTP Server starting (Session Fixed)...\n";
+        echo "Workerman HTTP Server starting...\n";
         echo "Listening on: {$config['host']}:{$config['port']}\n";
         echo "Worker processes: {$config['count']}\n";
         echo "Worker name: {$config['name']}\n";
-        echo "Session fix: " . ($config['session']['enable_fix'] ? 'ENABLED' : 'DISABLED') . "\n";
-        echo "New app per request: " . ($config['session']['create_new_app'] ? 'ENABLED' : 'DISABLED') . "\n";
         echo "Memory limit: " . ini_get('memory_limit') . "\n";
         echo "Press Ctrl+C to stop the server\n\n";
 
@@ -365,13 +349,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     {
         // Worker启动事件
         $this->worker->onWorkerStart = [$this, 'onWorkerStart'];
-
+        
         // 处理HTTP请求
         $this->worker->onMessage = [$this, 'onMessage'];
-
+        
         // 连接关闭事件
         $this->worker->onClose = [$this, 'onClose'];
-
+        
         // Worker停止事件
         $this->worker->onWorkerStop = [$this, 'onWorkerStop'];
     }
@@ -384,15 +368,15 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function onWorkerStart(Worker $worker): void
     {
-        echo "Worker #{$worker->id} started (PID: " . getmypid() . ") - Session Fixed Version\n";
-
+        echo "Worker #{$worker->id} started (PID: " . getmypid() . ")\n";
+        
         $config = array_merge($this->defaultConfig, $this->config);
-
+        
         // 设置定时器
         if ($config['timer']['enable']) {
             $this->setupTimers();
         }
-
+        
         // 设置内存监控
         if ($config['monitor']['enable']) {
             $this->setupMemoryMonitor();
@@ -400,7 +384,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
-     * 处理HTTP请求 - Session 修复版本
+     * 处理HTTP请求
      *
      * @param TcpConnection $connection
      * @param Request $request
@@ -411,35 +395,20 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $startTime = microtime(true);
         $this->requestCount++;
         $this->memoryStats['request_count']++;
-
-        $config = array_merge($this->defaultConfig, $this->config);
-
+        
         try {
             // 定期垃圾回收
             $this->performPeriodicGC();
-
-            // Session 调试信息
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Processing request: " . $request->method() . " " . $request->uri() . "\n";
-                echo "DEBUG: Current \$_COOKIE before request: " . json_encode($_COOKIE) . "\n";
-                echo "DEBUG: Current session status: " . (session_status() === PHP_SESSION_ACTIVE ? 'active' : 'inactive') . "\n";
-            }
-
-            // 根据配置选择处理方式
-            if ($config['session']['create_new_app']) {
-                // ReactPHP 模式：每次请求创建新应用实例
-                $response = $this->handleRequestWithNewApp($request);
-            } else {
-                // 优化模式：使用现有应用实例但修复 session
-                $response = $this->handleWorkermanRequestFixed($request);
-            }
-
+            
+            // 处理请求
+            $response = $this->handleWorkermanRequest($request);
+            
             // 发送响应
             $connection->send($response);
-
+            
             // 性能监控
             $this->monitorRequestPerformance($startTime);
-
+            
         } catch (Throwable $e) {
             // 错误处理
             $errorResponse = $this->handleWorkermanError($e);
@@ -451,125 +420,42 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
-     * 使用新应用实例处理请求（参考 ReactPHP adapter）
+     * 连接关闭事件处理
+     *
+     * @param TcpConnection $connection
+     * @return void
+     */
+    public function onClose(TcpConnection $connection): void
+    {
+        // 清理连接相关的上下文
+        $this->cleanupConnectionContext($connection);
+    }
+
+    /**
+     * Worker停止事件处理
+     *
+     * @param Worker $worker
+     * @return void
+     */
+    public function onWorkerStop(Worker $worker): void
+    {
+        echo "Worker #{$worker->id} stopped\n";
+
+        // 清理定时器
+        foreach ($this->timers as $timerId) {
+            Timer::del($timerId);
+        }
+        $this->timers = [];
+    }
+
+    /**
+     * 处理Workerman HTTP请求
      *
      * @param Request $request
      * @return Response
      */
-    protected function handleRequestWithNewApp(Request $request): Response
+    protected function handleWorkermanRequest(Request $request): Response
     {
-        $config = array_merge($this->defaultConfig, $this->config);
-
-        // 保存原始全局变量
-        $originalGet = $_GET;
-        $originalPost = $_POST;
-        $originalFiles = $_FILES;
-        $originalCookie = $_COOKIE;
-        $originalServer = $_SERVER;
-
-        // 预处理请求，设置全局变量
-        $this->preprocessRequest($request);
-
-        // 在每次请求前创建新的应用实例（参考 ReactPHP adapter）
-        $appClass = get_class($this->app);
-        $newApp = new $appClass();
-
-        // 初始化新的应用实例
-        if (method_exists($newApp, 'initialize')) {
-            $newApp->initialize();
-        }
-
-        // 临时保存原应用实例
-        $originalApp = $this->app;
-        // 设置新的应用实例
-        $this->app = $newApp;
-
-        try {
-            // 处理请求
-            $psrRequest = $this->createPsrRequest($request);
-            $psrResponse = $this->handleRequest($psrRequest);
-
-            return $this->convertPsrResponseToWorkerman($psrResponse);
-
-        } finally {
-            // 恢复原应用实例
-            $this->app = $originalApp;
-
-            // 恢复原始全局变量，但智能合并 cookie，保留 session cookie
-            $_GET = $originalGet;
-            $_POST = $originalPost;
-            $_FILES = $originalFiles;
-
-            // 关键修复：智能合并 cookie，保留 session cookie
-            if ($config['session']['preserve_session_cookies']) {
-                $_COOKIE = $this->mergeSessionCookies($originalCookie, $_COOKIE);
-
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Merged cookies: " . json_encode($_COOKIE) . "\n";
-                }
-            } else {
-                $_COOKIE = $originalCookie;
-            }
-
-            $_SERVER = $originalServer;
-        }
-    }
-
-    /**
-     * 智能合并 session cookie，保留 session 相关的 cookie（参考 ReactPHP adapter）
-     *
-     * @param array $originalCookies 原始 cookie
-     * @param array $currentCookies 当前 cookie
-     * @return array 合并后的 cookie
-     */
-    protected function mergeSessionCookies(array $originalCookies, array $currentCookies): array
-    {
-        // 常见的 session cookie 名称
-        $sessionCookieNames = [
-            'PHPSESSID',           // PHP 默认 session cookie
-            'tp_session',          // ThinkPHP session cookie
-            'think_session',       // ThinkPHP session cookie
-            'laravel_session',     // Laravel session cookie
-            'ci_session',          // CodeIgniter session cookie
-            'symfony',             // Symfony session cookie
-            'yii_session',         // Yii session cookie
-        ];
-
-        // 从原始 cookies 开始
-        $mergedCookies = $originalCookies;
-
-        // 合并 session 相关的 cookie
-        foreach ($sessionCookieNames as $sessionName) {
-            if (isset($currentCookies[$sessionName])) {
-                $mergedCookies[$sessionName] = $currentCookies[$sessionName];
-            }
-        }
-
-        // 检查是否有其他以 session 相关关键词开头的 cookie
-        foreach ($currentCookies as $name => $value) {
-            $lowerName = strtolower($name);
-            if (str_contains($lowerName, 'session') ||
-                str_contains($lowerName, 'sess') ||
-                str_contains($lowerName, 'auth') ||
-                str_contains($lowerName, 'login') ||
-                str_contains($lowerName, 'token')) {
-                $mergedCookies[$name] = $value;
-            }
-        }
-
-        return $mergedCookies;
-    }
-
-    /**
-     * 使用现有应用实例处理请求但修复 session（优化版本）
-     *
-     * @param Request $request
-     * @return Response
-     */
-    protected function handleWorkermanRequestFixed(Request $request): Response
-    {
-        $config = array_merge($this->defaultConfig, $this->config);
-
         // 保存原始全局变量
         $originalGet = $_GET;
         $originalPost = $_POST;
@@ -582,17 +468,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             $_GET = $request->get();
             $_POST = $request->post();
             $_FILES = $request->file();
-            // 智能设置 cookie（在设置全局变量时就处理）
-        $requestCookies = $request->cookie();
-        if ($config['session']['preserve_session_cookies']) {
-            $_COOKIE = $this->mergeSessionCookies($originalCookie, $requestCookies);
-            
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Merged cookies at start: " . json_encode($_COOKIE) . "\n";
-            }
-        } else {
-            $_COOKIE = $requestCookies;
-        }
+            $_COOKIE = $request->cookie();
 
             // 构建 $_SERVER 变量
             $_SERVER = array_merge($_SERVER, [
@@ -621,129 +497,16 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             ]);
 
             // 处理请求 - 直接使用 Workerman 请求处理
-            // 关键修复：正确处理 session
-            $this->initializeSessionForRequest($config);
-
-            // 处理请求 - 直接使用 Workerman 请求处理
-            $response = $this->handleWorkermanDirectRequest($request);
-
-            // 关键修复：保存 session
-            $this->finalizeSessionForRequest($config);
-
-            return $response;
+            return $this->handleWorkermanDirectRequest($request);
 
         } finally {
-            // 恢复原始全局变量，但智能合并 cookie
+            // 恢复原始全局变量
             $_GET = $originalGet;
             $_POST = $originalPost;
             $_FILES = $originalFiles;
-
-            // 关键修复：智能合并 cookie，保留 session cookie
-            if ($config['session']['preserve_session_cookies']) {
-                $_COOKIE = $this->mergeSessionCookies($originalCookie, $_COOKIE);
-
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Merged cookies (optimized): " . json_encode($_COOKIE) . "\n";
-                }
-            } else {
-                $_COOKIE = $originalCookie;
-            }
-
+            $_COOKIE = $originalCookie;
             $_SERVER = $originalServer;
         }
-    }
-
-    /**
-     * 预处理请求，设置全局变量（参考 WorkermanAdapter 实现）
-     *
-     * @param Request $request
-     * @return void
-     */
-    protected function preprocessRequest(Request $request): void
-    {
-        $config = array_merge($this->defaultConfig, $this->config);
-
-        if ($config['session']['debug_session']) {
-            echo "DEBUG: Current \$_COOKIE before preprocessing: " . json_encode($_COOKIE) . "\n";
-            echo "DEBUG: Current session status: " . (session_status() === PHP_SESSION_ACTIVE ? 'active' : 'inactive') . "\n";
-        }
-
-        // 设置全局变量
-        $_GET = $request->get() ?? [];
-        $_POST = $request->post() ?? [];
-        $_FILES = $request->file() ?? [];
-        $_COOKIE = $request->cookie() ?? [];
-
-        // 构建 $_SERVER 变量
-        $serverPort = '8080'; // 默认端口
-        $hostHeader = $request->header('host');
-
-        if ($hostHeader && strpos($hostHeader, ':') !== false) {
-            $httpHost = $hostHeader;
-            $serverName = explode(':', $hostHeader)[0];
-            $serverPort = explode(':', $hostHeader)[1];
-        } elseif ($hostHeader) {
-            $httpHost = $hostHeader;
-            $serverName = $hostHeader;
-        } else {
-            $httpHost = 'localhost:' . $serverPort;
-            $serverName = 'localhost';
-        }
-
-        $_SERVER = array_merge($_SERVER, [
-            'REQUEST_METHOD' => $request->method(),
-            'REQUEST_URI' => $request->uri(),
-            'PATH_INFO' => $request->path(),
-            'QUERY_STRING' => $request->queryString() ?? '',
-            'HTTP_HOST' => $httpHost,
-            'SERVER_NAME' => $serverName,
-            'SERVER_PORT' => $serverPort,
-            'HTTP_USER_AGENT' => $request->header('user-agent', 'Workerman'),
-            'HTTP_ACCEPT' => $request->header('accept', '*/*'),
-            'CONTENT_TYPE' => $request->header('content-type', ''),
-            'CONTENT_LENGTH' => $request->header('content-length', ''),
-            'SERVER_PROTOCOL' => 'HTTP/1.1',
-            'REQUEST_TIME' => time(),
-            'REQUEST_TIME_FLOAT' => microtime(true),
-            'SCRIPT_NAME' => '/index.php',
-            'PHP_SELF' => '/index.php',
-            'GATEWAY_INTERFACE' => 'CGI/1.1',
-            'SERVER_SOFTWARE' => 'Workerman/' . Worker::VERSION,
-            'REMOTE_ADDR' => $this->getClientIp($request),
-            'REMOTE_HOST' => $this->getClientIp($request),
-            'DOCUMENT_ROOT' => getcwd() . '/public',
-            'REQUEST_SCHEME' => 'http',
-            'HTTPS' => '',
-        ]);
-    }
-
-    /**
-     * 连接关闭事件处理
-     *
-     * @param TcpConnection $connection
-     * @return void
-     */
-    public function onClose(TcpConnection $connection): void
-    {
-        // 清理连接相关的上下文
-        $this->cleanupConnectionContext($connection);
-    }
-
-    /**
-     * Worker停止事件处理
-     *
-     * @param Worker $worker
-     * @return void
-     */
-    public function onWorkerStop(Worker $worker): void
-    {
-        echo "Worker #{$worker->id} stopped (Session Fixed Version)\n";
-
-        // 清理定时器
-        foreach ($this->timers as $timerId) {
-            Timer::del($timerId);
-        }
-        $this->timers = [];
     }
 
     /**
@@ -760,7 +523,6 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             'code' => $e->getCode(),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
-            'adapter' => 'workerman-session-fixed',
         ], JSON_UNESCAPED_UNICODE);
 
         return new Response(
@@ -935,7 +697,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $currentMemory = memory_get_usage(true);
         $peakMemory = memory_get_peak_usage(true);
 
-        echo "Workerman Stats (Session Fixed) - ";
+        echo "Workerman Stats - ";
         echo "Requests: {$this->memoryStats['request_count']}, ";
         echo "Memory: " . round($currentMemory / 1024 / 1024, 2) . "MB, ";
         echo "Peak: " . round($peakMemory / 1024 / 1024, 2) . "MB, ";
@@ -964,6 +726,53 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             default:
                 return (int) $memoryLimit;
         }
+    }
+
+    /**
+     * 获取内存使用统计
+     *
+     * @return array
+     */
+    public function getMemoryStats(): array
+    {
+        return array_merge($this->memoryStats, [
+            'current_memory' => memory_get_usage(true),
+            'current_memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            'peak_memory_mb' => round($this->memoryStats['peak_usage'] / 1024 / 1024, 2),
+            'connection_contexts' => count($this->connectionContext),
+            'active_timers' => count($this->timers),
+        ]);
+    }
+
+    /**
+     * 添加定时器
+     *
+     * @param float $interval 间隔时间（秒）
+     * @param callable $callback 回调函数
+     * @param bool $persistent 是否持久化
+     * @return int 定时器ID
+     */
+    public function addTimer(float $interval, callable $callback, bool $persistent = true): int
+    {
+        $timerId = $persistent ? Timer::add($interval, $callback) : Timer::add($interval, $callback, [], false);
+        $this->timers[] = $timerId;
+        return $timerId;
+    }
+
+    /**
+     * 删除定时器
+     *
+     * @param int $timerId 定时器ID
+     * @return bool
+     */
+    public function delTimer(int $timerId): bool
+    {
+        $key = array_search($timerId, $this->timers);
+        if ($key !== false) {
+            unset($this->timers[$key]);
+            return Timer::del($timerId);
+        }
+        return false;
     }
 
     /**
@@ -1006,6 +815,73 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         }
 
         return '127.0.0.1';
+    }
+
+    /**
+     * 直接处理 Workerman 请求（不转换为 PSR-7）
+     *
+     * @param Request $request
+     * @return Response
+     */
+    protected function handleWorkermanDirectRequest(Request $request): Response
+    {
+        try {
+            // 保存当前请求对象
+            $this->currentRequest = $request;
+
+            $path = $request->path();
+
+            // 检查是否是特殊的状态页面路径
+            if ($path === '/_workerman_status' || $path === '/_status') {
+                return $this->createStatusResponse($request);
+            }
+
+            // 设置全局变量以兼容传统PHP环境
+            $this->setGlobalVariables($request);
+
+            try {
+                // 创建 PSR-7 兼容的请求对象
+                $psrRequest = $this->createPsrRequest($request);
+
+                // 调用父类的 handleRequest 方法处理 ThinkPHP 路由
+                $psrResponse = $this->handleRequest($psrRequest);
+
+                // 将 PSR-7 响应转换为 Workerman 响应
+                return $this->convertPsrResponseToWorkerman($psrResponse);
+
+            } finally {
+                // 恢复全局变量
+                $this->restoreGlobalVariables();
+            }
+
+            // 添加 Keep-Alive 头
+            $this->addKeepAliveHeaders($request, $headers);
+
+            // 应用 gzip 压缩
+            $compressedData = $this->applyCompression($request, $responseBody, $headers);
+
+            return new Response(200, $headers, $compressedData['body']);
+
+        } catch (Throwable $e) {
+            // 错误响应
+            $errorData = [
+                'error' => true,
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ];
+
+            $errorBody = json_encode($errorData, JSON_UNESCAPED_UNICODE);
+            $errorHeaders = [
+                'Content-Type' => 'application/json; charset=utf-8',
+            ];
+
+            // 对错误响应也应用压缩
+            $compressedError = $this->applyCompression($request, $errorBody, $errorHeaders);
+
+            return new Response(500, $errorHeaders, $compressedError['body']);
+        }
     }
 
     /**
@@ -1089,6 +965,88 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 设置全局变量以兼容传统PHP环境
+     *
+     * @param Request $request
+     * @return void
+     */
+    protected function setGlobalVariables(Request $request): void
+    {
+        // 保存原始全局变量
+        $this->originalGlobals = [
+            'GET' => $_GET,
+            'POST' => $_POST,
+            'FILES' => $_FILES,
+            'COOKIE' => $_COOKIE,
+            'SERVER' => $_SERVER,
+        ];
+
+        // 设置新的全局变量
+        $_GET = $request->get() ?? [];
+        $_POST = $request->post() ?? [];
+        $_FILES = $request->file() ?? [];
+        $_COOKIE = $request->cookie() ?? [];
+
+        // 构建 $_SERVER 变量
+        $serverPort = '8080'; // 默认端口
+        $hostHeader = $request->header('host');
+
+        if ($hostHeader && strpos($hostHeader, ':') !== false) {
+            $httpHost = $hostHeader;
+            $serverName = explode(':', $hostHeader)[0];
+            $serverPort = explode(':', $hostHeader)[1];
+        } elseif ($hostHeader) {
+            $httpHost = $hostHeader;
+            $serverName = $hostHeader;
+        } else {
+            $httpHost = 'localhost:' . $serverPort;
+            $serverName = 'localhost';
+        }
+
+        $_SERVER = array_merge($_SERVER, [
+            'REQUEST_METHOD' => $request->method(),
+            'REQUEST_URI' => $request->uri(),
+            'PATH_INFO' => $request->path(),
+            'QUERY_STRING' => $request->queryString() ?? '',
+            'HTTP_HOST' => $httpHost,
+            'SERVER_NAME' => $serverName,
+            'SERVER_PORT' => $serverPort,
+            'HTTP_USER_AGENT' => $request->header('user-agent', 'Workerman'),
+            'HTTP_ACCEPT' => $request->header('accept', '*/*'),
+            'CONTENT_TYPE' => $request->header('content-type', ''),
+            'CONTENT_LENGTH' => $request->header('content-length', ''),
+            'SERVER_PROTOCOL' => 'HTTP/1.1',
+            'REQUEST_TIME' => time(),
+            'REQUEST_TIME_FLOAT' => microtime(true),
+            'SCRIPT_NAME' => '/index.php',
+            'PHP_SELF' => '/index.php',
+            'GATEWAY_INTERFACE' => 'CGI/1.1',
+            'SERVER_SOFTWARE' => 'Workerman/' . Worker::VERSION,
+            'REMOTE_ADDR' => $this->getClientIp($request),
+            'REMOTE_HOST' => $this->getClientIp($request),
+            'DOCUMENT_ROOT' => getcwd() . '/public',
+            'REQUEST_SCHEME' => 'http',
+            'HTTPS' => '',
+        ]);
+    }
+
+    /**
+     * 恢复原始全局变量
+     *
+     * @return void
+     */
+    protected function restoreGlobalVariables(): void
+    {
+        if (isset($this->originalGlobals)) {
+            $_GET = $this->originalGlobals['GET'];
+            $_POST = $this->originalGlobals['POST'];
+            $_FILES = $this->originalGlobals['FILES'];
+            $_COOKIE = $this->originalGlobals['COOKIE'];
+            $_SERVER = $this->originalGlobals['SERVER'];
+        }
+    }
+
+    /**
      * 将 PSR-7 响应转换为 Workerman 响应
      *
      * @param ResponseInterface $psrResponse
@@ -1109,73 +1067,12 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $body = (string) $psrResponse->getBody();
 
         // 添加 Keep-Alive 头
-        if ($this->currentRequest !== null) {
-            $this->addKeepAliveHeaders($this->currentRequest, $headers);
-        }
+        $this->addKeepAliveHeaders($this->currentRequest, $headers);
 
         // 应用压缩
-        if ($this->currentRequest !== null) {
-            $compressedData = $this->applyCompression($this->currentRequest, $body, $headers);
-        } else {
-            $compressedData = ['body' => $body, 'compressed' => false];
-        }
+        $compressedData = $this->applyCompression($this->currentRequest, $body, $headers);
 
         return new Response($statusCode, $headers, $compressedData['body']);
-    }
-
-    /**
-     * 直接处理 Workerman 请求（不转换为 PSR-7）
-     *
-     * @param Request $request
-     * @return Response
-     */
-    protected function handleWorkermanDirectRequest(Request $request): Response
-    {
-        try {
-            // 保存当前请求对象
-            $this->currentRequest = $request;
-
-            $path = $request->path();
-
-            // 检查是否是特殊的状态页面路径
-            if ($path === '/_workerman_status' || $path === '/_status') {
-                return $this->createStatusResponse($request);
-            }
-
-            // 创建 PSR-7 兼容的请求对象
-            $psrRequest = $this->createPsrRequest($request);
-
-            // 调用父类的 handleRequest 方法处理 ThinkPHP 路由
-            $psrResponse = $this->handleRequest($psrRequest);
-
-            // 将 PSR-7 响应转换为 Workerman 响应
-            return $this->convertPsrResponseToWorkerman($psrResponse);
-
-        } catch (Throwable $e) {
-            // 错误响应
-            $errorData = [
-                'error' => true,
-                'message' => $e->getMessage(),
-                'code' => $e->getCode(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'adapter' => 'workerman-session-fixed',
-            ];
-
-            $errorBody = json_encode($errorData, JSON_UNESCAPED_UNICODE);
-            $errorHeaders = [
-                'Content-Type' => 'application/json; charset=utf-8',
-            ];
-
-            // 对错误响应也应用压缩
-            if ($request !== null) {
-            $compressedError = $this->applyCompression($request, $errorBody, $errorHeaders);
-        } else {
-            $compressedError = ['body' => $errorBody, 'compressed' => false];
-        }
-
-            return new Response(500, $errorHeaders, $compressedError['body']);
-        }
     }
 
     /**
@@ -1272,6 +1169,63 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 检查是否应该压缩响应
+     *
+     * @param Request $request
+     * @param string $contentType
+     * @param int $contentLength
+     * @return bool
+     */
+    protected function shouldCompress(Request $request, string $contentType, int $contentLength): bool
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $compressionConfig = $config['compression'] ?? [];
+
+        // 检查是否启用压缩
+        if (!($compressionConfig['enable'] ?? true)) {
+            return false;
+        }
+
+        // 检查内容长度
+        $minLength = $compressionConfig['min_length'] ?? 1024;
+        if ($contentLength < $minLength) {
+            return false;
+        }
+
+        // 检查内容类型
+        $supportedTypes = $compressionConfig['types'] ?? [];
+        foreach ($supportedTypes as $type) {
+            if (str_contains($contentType, $type)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 获取客户端支持的压缩类型
+     *
+     * @param Request $request
+     * @return array
+     */
+    protected function getSupportedCompressions(Request $request): array
+    {
+        $acceptEncoding = $request->header('accept-encoding', '');
+        $supported = [];
+
+        if (str_contains($acceptEncoding, 'gzip')) {
+            $supported[] = 'gzip';
+        }
+
+        if (str_contains($acceptEncoding, 'deflate')) {
+            $supported[] = 'deflate';
+        }
+
+        return $supported;
+    }
+
+    /**
      * 添加 Keep-Alive 响应头
      *
      * @param Request $request
@@ -1305,6 +1259,106 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 配置 Worker 的 Socket 选项
+     *
+     * @return void
+     */
+    protected function configureSocketOptions(): void
+    {
+        if ($this->worker === null) {
+            return;
+        }
+
+        $config = array_merge($this->defaultConfig, $this->config);
+        $socketConfig = $config['socket'] ?? [];
+
+        // 获取 socket 资源
+        $socket = $this->worker->getMainSocket();
+        if (!$socket) {
+            return;
+        }
+
+        // 设置 socket 选项
+        if ($socketConfig['so_reuseport'] ?? true) {
+            // 端口复用 (需要 Linux 3.9+ 支持)
+            if (defined('SO_REUSEPORT')) {
+                socket_set_option($socket, SOL_SOCKET, SO_REUSEPORT, 1);
+            }
+        }
+
+        if ($socketConfig['tcp_nodelay'] ?? true) {
+            // 禁用 Nagle 算法，减少延迟
+            if (defined('IPPROTO_TCP') && defined('TCP_NODELAY')) {
+                socket_set_option($socket, IPPROTO_TCP, TCP_NODELAY, 1);
+            }
+        }
+
+        if ($socketConfig['so_keepalive'] ?? true) {
+            // 启用 TCP keep-alive
+            socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
+        }
+    }
+
+    /**
+     * 获取连接统计信息
+     *
+     * @return array
+     */
+    public function getConnectionStats(): array
+    {
+        $stats = [
+            'total_connections' => count($this->connectionContext),
+            'active_timers' => count($this->timers),
+            'memory_usage' => memory_get_usage(true),
+            'peak_memory' => memory_get_peak_usage(true),
+        ];
+
+        if ($this->worker !== null) {
+            $stats['worker_id'] = $this->worker->id ?? 0;
+            $stats['worker_name'] = $this->worker->name ?? 'unknown';
+        }
+
+        return $stats;
+    }
+
+    /**
+     * 检查连接是否应该保持活跃
+     *
+     * @param TcpConnection $connection
+     * @return bool
+     */
+    protected function shouldKeepConnectionAlive(TcpConnection $connection): bool
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        $keepAliveConfig = $config['keep_alive'] ?? [];
+
+        if (!($keepAliveConfig['enable'] ?? true)) {
+            return false;
+        }
+
+        $connectionId = spl_object_hash($connection);
+        $context = $this->connectionContext[$connectionId] ?? [];
+
+        // 检查请求数量限制
+        $maxRequests = $keepAliveConfig['max_requests'] ?? 1000;
+        $requestCount = $context['request_count'] ?? 0;
+
+        if ($requestCount >= $maxRequests) {
+            return false;
+        }
+
+        // 检查连接时间
+        $timeout = $keepAliveConfig['timeout'] ?? 60;
+        $lastRequest = $context['last_request'] ?? time();
+
+        if (time() - $lastRequest > $timeout) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * 创建状态页面响应
      *
      * @param Request $request
@@ -1325,13 +1379,13 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             $responseBody = $this->createHtmlResponse($path, $method);
             $headers = [
                 'Content-Type' => 'text/html; charset=utf-8',
-                'Server' => 'Workerman-ThinkPHP-Runtime-SessionFixed',
-                'X-Powered-By' => 'ThinkPHP-Runtime/Workerman-SessionFixed',
+                'Server' => 'Workerman-ThinkPHP-Runtime',
+                'X-Powered-By' => 'ThinkPHP-Runtime/Workerman',
             ];
         } else {
             // 返回 JSON 响应给 API 客户端
             $data = [
-                'message' => 'Workerman Runtime Status (Session Fixed)',
+                'message' => 'Workerman Runtime Status',
                 'path' => $path,
                 'method' => $method,
                 'timestamp' => time(),
@@ -1339,16 +1393,14 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
                 'php_version' => PHP_VERSION,
                 'memory_usage' => round(memory_get_usage(true) / 1024 / 1024, 2) . 'MB',
                 'status' => 'running',
-                'session_fix' => 'enabled',
-                'adapter' => 'workerman-session-fixed',
             ];
 
             $responseBody = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
             $headers = [
                 'Content-Type' => 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin' => '*',
-                'Server' => 'Workerman-ThinkPHP-Runtime-SessionFixed',
-                'X-Powered-By' => 'ThinkPHP-Runtime/Workerman-SessionFixed',
+                'Server' => 'Workerman-ThinkPHP-Runtime',
+                'X-Powered-By' => 'ThinkPHP-Runtime/Workerman',
             ];
         }
 
@@ -1370,19 +1422,14 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      */
     protected function createHtmlResponse(string $path, string $method): string
     {
-        $config = array_merge($this->defaultConfig, $this->config);
-
         $data = [
-            'message' => 'Hello from Workerman Runtime (Session Fixed)!',
+            'message' => 'Hello from Workerman Runtime!',
             'path' => $path,
             'method' => $method,
             'timestamp' => time(),
             'server' => 'Workerman/' . Worker::VERSION,
             'php_version' => PHP_VERSION,
             'memory_usage' => round(memory_get_usage(true) / 1024 / 1024, 2) . 'MB',
-            'session_fix_enabled' => $config['session']['enable_fix'],
-            'new_app_per_request' => $config['session']['create_new_app'],
-            'preserve_session_cookies' => $config['session']['preserve_session_cookies'],
         ];
 
         return '<!DOCTYPE html>
@@ -1390,35 +1437,27 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workerman Runtime - ThinkPHP (Session Fixed)</title>
+    <title>Workerman Runtime - ThinkPHP</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; border-bottom: 2px solid #28a745; padding-bottom: 10px; }
-        .info { background: #d4edda; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #28a745; }
+        h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .info { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0; }
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
-        .stat-item { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745; }
+        .stat-item { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; }
         .stat-label { font-weight: bold; color: #666; font-size: 12px; text-transform: uppercase; }
         .stat-value { font-size: 18px; color: #333; margin-top: 5px; }
         .success { color: #28a745; }
         .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; text-align: center; }
-        .fix-info { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Workerman Runtime (Session Fixed)</h1>
+        <h1>🚀 Workerman Runtime</h1>
 
         <div class="info">
             <strong class="success">✅ Workerman Runtime 运行正常！</strong><br>
-            这是一个基于 Workerman 的高性能 ThinkPHP 运行时环境，已修复 session_id 变化问题。
-        </div>
-
-        <div class="fix-info">
-            <strong>🔧 Session 修复状态:</strong><br>
-            • Session 修复: ' . ($data['session_fix_enabled'] ? '<span class="success">已启用</span>' : '未启用') . '<br>
-            • 新应用实例模式: ' . ($data['new_app_per_request'] ? '<span class="success">已启用</span>' : '未启用') . '<br>
-            • Session Cookie 保留: ' . ($data['preserve_session_cookies'] ? '<span class="success">已启用</span>' : '未启用') . '
+            这是一个基于 Workerman 的高性能 ThinkPHP 运行时环境。
         </div>
 
         <div class="stats">
@@ -1448,319 +1487,32 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             </div>
         </div>
 
-        <h2>🔧 Session 修复功能</h2>
+        <h2>🔧 功能特性</h2>
         <ul>
-            <li>✅ <strong>智能 Cookie 合并</strong>：保留 session 相关的 cookie</li>
-            <li>✅ <strong>ReactPHP 模式</strong>：可选的新应用实例创建模式</li>
-            <li>✅ <strong>Session 调试</strong>：可启用详细的 session 处理日志</li>
-            <li>✅ <strong>向后兼容</strong>：保持原有性能优化</li>
+            <li>✅ <strong>高性能</strong>：基于 Workerman 的异步非阻塞架构</li>
+            <li>✅ <strong>Keep-Alive</strong>：支持 HTTP 长连接，提升性能</li>
+            <li>✅ <strong>Gzip 压缩</strong>：自动压缩响应，节省带宽</li>
+            <li>✅ <strong>多进程</strong>：支持多进程并发处理</li>
+            <li>✅ <strong>内存管理</strong>：智能垃圾回收，防止内存泄漏</li>
+            <li>✅ <strong>跨平台</strong>：支持 Windows、Linux、macOS</li>
         </ul>
 
-        <h2>📊 配置示例</h2>
+        <h2>📊 API 测试</h2>
+        <p>您可以使用以下方式测试 API：</p>
         <pre style="background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto;">
-// 启用 Session 修复
-$config = [
-    "session" => [
-        "enable_fix" => true,           // 启用 session 修复
-        "create_new_app" => false,      // ReactPHP 模式（性能较低但更安全）
-        "preserve_session_cookies" => true, // 保留 session cookie
-        "debug_session" => false,       // 调试模式
-    ],
-];
+# JSON API 响应
+curl -H "Accept: application/json" http://127.0.0.1:8080/
+
+# 性能测试
+wrk -t4 -c100 -d30s http://127.0.0.1:8080/
         </pre>
 
         <div class="footer">
-            <p>Powered by <strong>ThinkPHP Runtime</strong> + <strong>Workerman</strong> (Session Fixed)</p>
-            <p>高性能 PHP 应用运行时环境 - Session 问题已修复</p>
+            <p>Powered by <strong>ThinkPHP Runtime</strong> + <strong>Workerman</strong></p>
+            <p>高性能 PHP 应用运行时环境</p>
         </div>
     </div>
 </body>
 </html>';
     }
-
-    /**
-     * 获取内存使用统计
-     *
-     * @return array
-     */
-    public function getMemoryStats(): array
-    {
-        return array_merge($this->memoryStats, [
-            'current_memory' => memory_get_usage(true),
-            'current_memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
-            'peak_memory_mb' => round($this->memoryStats['peak_usage'] / 1024 / 1024, 2),
-            'connection_contexts' => count($this->connectionContext),
-            'active_timers' => count($this->timers),
-            'session_fix_enabled' => $this->getConfig()['session']['enable_fix'] ?? true,
-        ]);
-    }
-
-    /**
-     * 添加定时器
-     *
-     * @param float $interval 间隔时间（秒）
-     * @param callable $callback 回调函数
-     * @param bool $persistent 是否持久化
-     * @return int 定时器ID
-     */
-    public function addTimer(float $interval, callable $callback, bool $persistent = true): int
-    {
-        $timerId = $persistent ? Timer::add($interval, $callback) : Timer::add($interval, $callback, [], false);
-        $this->timers[] = $timerId;
-        return $timerId;
-    }
-
-    /**
-     * 删除定时器
-     *
-     * @param int $timerId 定时器ID
-     * @return bool
-     */
-    public function delTimer(int $timerId): bool
-    {
-        $key = array_search($timerId, $this->timers);
-        if ($key !== false) {
-            unset($this->timers[$key]);
-            return Timer::del($timerId);
-        }
-        return false;
-    }
-
-    /**
-     * 为请求初始化 session
-     *
-     * @param array $config
-     * @return void
-     */
-    protected function initializeSessionForRequest(array $config): void
-    {
-        if (!$config['session']['enable_fix']) {
-            return;
-        }
-
-        try {
-            // 检查 headers 是否已发送
-            if (headers_sent($file, $line)) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Headers already sent in $file:$line, using alternative session handling\n";
-                }
-                $this->handleSessionWithoutStart($config);
-                return;
-            }
-
-            // 如果 session 已经活动，先关闭
-            if (session_status() === PHP_SESSION_ACTIVE) {
-                session_write_close();
-            }
-
-            // 从 cookie 中获取 session ID
-            $sessionName = session_name();
-            if (isset($_COOKIE[$sessionName]) && !empty($_COOKIE[$sessionName])) {
-                session_id($_COOKIE[$sessionName]);
-                
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Set session ID from cookie: " . $_COOKIE[$sessionName] . "\n";
-                }
-            }
-
-            // 启动 session
-            if (session_start()) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session started successfully, ID: " . session_id() . "\n";
-                    echo "DEBUG: Session data: " . json_encode($_SESSION) . "\n";
-                }
-            } else {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Failed to start session\n";
-                }
-                $this->handleSessionWithoutStart($config);
-            }
-
-        } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Session initialization error: " . $e->getMessage() . "\n";
-            }
-            $this->handleSessionWithoutStart($config);
-        }
-    }
-
-    /**
-     * 为请求完成 session 处理
-     *
-     * @param array $config
-     * @return void
-     */
-    protected function finalizeSessionForRequest(array $config): void
-    {
-        if (!$config['session']['enable_fix']) {
-            return;
-        }
-
-        try {
-            if (session_status() === PHP_SESSION_ACTIVE) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Finalizing session, ID: " . session_id() . "\n";
-                    echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
-                }
-                
-                // 写入并关闭 session
-                session_write_close();
-                
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session written and closed\n";
-                }
-            } else if (!empty($this->currentSessionId)) {
-                // 使用替代方式保存 session
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Saving session to file, ID: " . $this->currentSessionId . "\n";
-                    echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
-                }
-                
-                $this->writeSessionToFile($this->currentSessionId, $_SESSION);
-                
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session saved to file\n";
-                }
-            }
-
-        } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Session finalization error: " . $e->getMessage() . "\n";
-            }
-        }
-    }
-
-
-    /**
-     * 当无法启动 session 时的替代处理方案
-     *
-     * @param array $config
-     * @return void
-     */
-    protected function handleSessionWithoutStart(array $config): void
-    {
-        if ($config['session']['debug_session']) {
-            echo "DEBUG: Using alternative session handling (file-based)\n";
-        }
-
-        try {
-            // 从 cookie 中获取 session ID
-            $sessionName = session_name();
-            $sessionId = $_COOKIE[$sessionName] ?? '';
-            
-            if (empty($sessionId)) {
-                // 生成新的 session ID
-                $sessionId = $this->generateSessionId();
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Generated new session ID: $sessionId\n";
-                }
-            }
-
-            // 直接从文件读取 session 数据
-            $sessionData = $this->readSessionFromFile($sessionId);
-            
-            if ($sessionData !== false) {
-                $_SESSION = $sessionData;
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Loaded session data from file: " . json_encode($_SESSION) . "\n";
-                }
-            } else {
-                $_SESSION = [];
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: No existing session data, starting with empty session\n";
-                }
-            }
-
-            // 设置当前 session ID（用于后续保存）
-            $this->currentSessionId = $sessionId;
-
-        } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Alternative session handling error: " . $e->getMessage() . "\n";
-            }
-            $_SESSION = [];
-        }
-    }
-
-    /**
-     * 生成 session ID
-     *
-     * @return string
-     */
-    protected function generateSessionId(): string
-    {
-        return bin2hex(random_bytes(16));
-    }
-
-    /**
-     * 从文件读取 session 数据
-     *
-     * @param string $sessionId
-     * @return array|false
-     */
-    protected function readSessionFromFile(string $sessionId)
-    {
-        try {
-            $sessionPath = session_save_path() ?: sys_get_temp_dir();
-            $sessionFile = $sessionPath . '/sess_' . $sessionId;
-            
-            if (!file_exists($sessionFile)) {
-                return false;
-            }
-
-            $data = file_get_contents($sessionFile);
-            if ($data === false) {
-                return false;
-            }
-
-            // 解析 session 数据
-            $sessionData = [];
-            if (!empty($data)) {
-                session_decode($data);
-                $sessionData = $_SESSION ?? [];
-            }
-
-            return $sessionData;
-
-        } catch (Throwable $e) {
-            return false;
-        }
-    }
-
-    /**
-     * 将 session 数据写入文件
-     *
-     * @param string $sessionId
-     * @param array $sessionData
-     * @return bool
-     */
-    protected function writeSessionToFile(string $sessionId, array $sessionData): bool
-    {
-        try {
-            $sessionPath = session_save_path() ?: sys_get_temp_dir();
-            $sessionFile = $sessionPath . '/sess_' . $sessionId;
-            
-            // 设置 $_SESSION 以便 session_encode 工作
-            $originalSession = $_SESSION ?? [];
-            $_SESSION = $sessionData;
-            
-            $data = session_encode();
-            
-            // 恢复原始 $_SESSION
-            $_SESSION = $originalSession;
-            
-            return file_put_contents($sessionFile, $data) !== false;
-
-        } catch (Throwable $e) {
-            return false;
-        }
-    }
-
-    /**
-     * 当前 session ID
-     *
-     * @var string
-     */
-    protected string $currentSessionId = '';
-
 }

@@ -1539,15 +1539,6 @@ $config = [
         }
 
         try {
-            // 检查 headers 是否已发送
-            if (headers_sent($file, $line)) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Headers already sent in $file:$line, using alternative session handling\n";
-                }
-                $this->handleSessionWithoutStart($config);
-                return;
-            }
-
             // 如果 session 已经活动，先关闭
             if (session_status() === PHP_SESSION_ACTIVE) {
                 session_write_close();
@@ -1573,14 +1564,12 @@ $config = [
                 if ($config['session']['debug_session']) {
                     echo "DEBUG: Failed to start session\n";
                 }
-                $this->handleSessionWithoutStart($config);
             }
 
         } catch (Throwable $e) {
             if ($config['session']['debug_session']) {
                 echo "DEBUG: Session initialization error: " . $e->getMessage() . "\n";
             }
-            $this->handleSessionWithoutStart($config);
         }
     }
 
@@ -1609,18 +1598,6 @@ $config = [
                 if ($config['session']['debug_session']) {
                     echo "DEBUG: Session written and closed\n";
                 }
-            } else if (!empty($this->currentSessionId)) {
-                // 使用替代方式保存 session
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Saving session to file, ID: " . $this->currentSessionId . "\n";
-                    echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
-                }
-                
-                $this->writeSessionToFile($this->currentSessionId, $_SESSION);
-                
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session saved to file\n";
-                }
             }
 
         } catch (Throwable $e) {
@@ -1629,138 +1606,5 @@ $config = [
             }
         }
     }
-
-
-    /**
-     * 当无法启动 session 时的替代处理方案
-     *
-     * @param array $config
-     * @return void
-     */
-    protected function handleSessionWithoutStart(array $config): void
-    {
-        if ($config['session']['debug_session']) {
-            echo "DEBUG: Using alternative session handling (file-based)\n";
-        }
-
-        try {
-            // 从 cookie 中获取 session ID
-            $sessionName = session_name();
-            $sessionId = $_COOKIE[$sessionName] ?? '';
-            
-            if (empty($sessionId)) {
-                // 生成新的 session ID
-                $sessionId = $this->generateSessionId();
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Generated new session ID: $sessionId\n";
-                }
-            }
-
-            // 直接从文件读取 session 数据
-            $sessionData = $this->readSessionFromFile($sessionId);
-            
-            if ($sessionData !== false) {
-                $_SESSION = $sessionData;
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Loaded session data from file: " . json_encode($_SESSION) . "\n";
-                }
-            } else {
-                $_SESSION = [];
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: No existing session data, starting with empty session\n";
-                }
-            }
-
-            // 设置当前 session ID（用于后续保存）
-            $this->currentSessionId = $sessionId;
-
-        } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Alternative session handling error: " . $e->getMessage() . "\n";
-            }
-            $_SESSION = [];
-        }
-    }
-
-    /**
-     * 生成 session ID
-     *
-     * @return string
-     */
-    protected function generateSessionId(): string
-    {
-        return bin2hex(random_bytes(16));
-    }
-
-    /**
-     * 从文件读取 session 数据
-     *
-     * @param string $sessionId
-     * @return array|false
-     */
-    protected function readSessionFromFile(string $sessionId)
-    {
-        try {
-            $sessionPath = session_save_path() ?: sys_get_temp_dir();
-            $sessionFile = $sessionPath . '/sess_' . $sessionId;
-            
-            if (!file_exists($sessionFile)) {
-                return false;
-            }
-
-            $data = file_get_contents($sessionFile);
-            if ($data === false) {
-                return false;
-            }
-
-            // 解析 session 数据
-            $sessionData = [];
-            if (!empty($data)) {
-                session_decode($data);
-                $sessionData = $_SESSION ?? [];
-            }
-
-            return $sessionData;
-
-        } catch (Throwable $e) {
-            return false;
-        }
-    }
-
-    /**
-     * 将 session 数据写入文件
-     *
-     * @param string $sessionId
-     * @param array $sessionData
-     * @return bool
-     */
-    protected function writeSessionToFile(string $sessionId, array $sessionData): bool
-    {
-        try {
-            $sessionPath = session_save_path() ?: sys_get_temp_dir();
-            $sessionFile = $sessionPath . '/sess_' . $sessionId;
-            
-            // 设置 $_SESSION 以便 session_encode 工作
-            $originalSession = $_SESSION ?? [];
-            $_SESSION = $sessionData;
-            
-            $data = session_encode();
-            
-            // 恢复原始 $_SESSION
-            $_SESSION = $originalSession;
-            
-            return file_put_contents($sessionFile, $data) !== false;
-
-        } catch (Throwable $e) {
-            return false;
-        }
-    }
-
-    /**
-     * 当前 session ID
-     *
-     * @var string
-     */
-    protected string $currentSessionId = '';
 
 }
