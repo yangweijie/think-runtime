@@ -37,7 +37,8 @@
         "psr/http-server-handler": "^1.0",
         "psr/http-server-middleware": "^1.0",
         "topthink/framework": "^8.0",
-        "topthink/think-orm": "3.*"
+        "topthink/think-orm": "3.*",
+        "ext-sockets": "*"
     },
     "require-dev": {
         "pestphp/pest": "^1.23",

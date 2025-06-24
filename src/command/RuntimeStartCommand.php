@@ -15,7 +15,7 @@ class RuntimeStartCommand extends Command
     {
         $this->setName('runtime:start')
              ->setDescription('Start the runtime server')
-             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, roadrunner, bref, vercel)')
+             ->addArgument('runtime', Argument::OPTIONAL, 'The runtime to start (swoole, frankenphp, reactphp, roadrunner, bref, vercel, workerman)')
              ->addOption('host', null, Option::VALUE_OPTIONAL, 'The host to listen on')
              ->addOption('port', null, Option::VALUE_OPTIONAL, 'The port to listen on')
              ->addOption('workers', null, Option::VALUE_OPTIONAL, 'The number of worker processes')
@@ -203,6 +203,18 @@ class RuntimeStartCommand extends Command
                 }
                 break;
 
+            case 'workerman':
+                // Workerman 特有配置
+                if (isset($options['worker_num'])) {
+                    $options['count'] = (int) $options['worker_num']; // workerman 使用 count 而不是 worker_num
+                    unset($options['worker_num']);
+                }
+
+                if (isset($options['debug'])) {
+                    $options['debug'] = true;
+                }
+                break;
+
             case 'swoole':
             default:
                 // 对于swoole和其他runtime，保持默认行为
@@ -298,6 +310,15 @@ class RuntimeStartCommand extends Command
                 $output->writeln('<comment>Environment: Serverless</comment>');
                 $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
                 $output->writeln('<comment>Note: Running in Vercel serverless environment</comment>');
+                break;
+
+            case 'workerman':
+                $output->writeln('<comment>Mode: Workerman</comment>');
+                $output->writeln('<comment>Host: ' . ($options['host'] ?? '0.0.0.0') . '</comment>');
+                $output->writeln('<comment>Port: ' . ($options['port'] ?? '8080') . '</comment>');
+                $output->writeln('<comment>Workers: ' . ($options['count'] ?? '4') . '</comment>');
+                $output->writeln('<comment>Debug: ' . (($options['debug'] ?? false) ? 'true' : 'false') . '</comment>');
+                $output->writeln('<comment>Name: ' . ($options['name'] ?? 'think-workerman') . '</comment>');
                 break;
 
             default:
