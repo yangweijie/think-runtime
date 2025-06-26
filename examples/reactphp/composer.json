@@ -1,0 +1,25 @@
+{
+    "name": "think/runtime-reactphp-example",
+    "description": "ThinkPHP Runtime ReactPHP Example",
+    "type": "project",
+    "require": {
+        "think/runtime": "*",
+        "topthink/framework": "^8.0",
+        "react/http": "^1.0",
+        "react/socket": "^1.0"
+    },
+    "extra": {
+        "runtime": {
+            "class": "Think\\Runtime\\Runtime\\ReactPHPRuntime",
+            "host": "127.0.0.1",
+            "port": 8080,
+            "max_request_size": 1048576,
+            "max_concurrent_requests": 100
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "think/runtime": true
+        }
+    }
+}

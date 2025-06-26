@@ -1,0 +1,23 @@
+{
+    "name": "think/runtime-workerman-example",
+    "description": "ThinkPHP Runtime Workerman Example",
+    "type": "project",
+    "require": {
+        "think/runtime": "*",
+        "topthink/framework": "^8.0",
+        "workerman/workerman": "^4.0"
+    },
+    "extra": {
+        "runtime": {
+            "class": "Think\\Runtime\\Runtime\\WorkermanRuntime",
+            "host": "0.0.0.0",
+            "port": 8080,
+            "worker_count": 4
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "think/runtime": true
+        }
+    }
+}

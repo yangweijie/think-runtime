@@ -1,0 +1,32 @@
+{
+    "name": "think/runtime-vercel-example",
+    "description": "ThinkPHP Runtime Vercel Example",
+    "type": "project",
+    "require": {
+        "think/runtime": "*",
+        "topthink/framework": "^8.0"
+    },
+    "extra": {
+        "runtime": {
+            "class": "Think\\Runtime\\Runtime\\VercelRuntime",
+            "vercel_env": "production",
+            "enable_cors": true,
+            "cors_origins": "*",
+            "cors_methods": "GET,POST,PUT,DELETE,OPTIONS",
+            "enable_static_cache": true,
+            "cache_control_max_age": 3600,
+            "enable_logging": true,
+            "log_level": "error",
+            "max_execution_time": 10
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "think/runtime": true
+        }
+    },
+    "scripts": {
+        "vercel-build": "echo 'Build completed'",
+        "vercel-dev": "php -S localhost:3000 api/index.php"
+    }
+}

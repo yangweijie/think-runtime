@@ -1,0 +1,40 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Development files
+/.env
+/.env.local
+/.env.*.local
+
+# Runtime files
+/runtime/
+/temp/
+/cache/
+
+# IDE files
+/.vscode/
+/.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Test files
+/tests/
+/phpunit.xml
+/.phpunit.cache/
+
+# Documentation
+/docs/
+README.md
+
+# Git
+/.git/
+/.gitignore

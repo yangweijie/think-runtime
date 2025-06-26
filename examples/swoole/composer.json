@@ -1,0 +1,29 @@
+{
+    "name": "think/runtime-swoole-example",
+    "description": "ThinkPHP Runtime Swoole Example",
+    "type": "project",
+    "require": {
+        "think/runtime": "*",
+        "topthink/framework": "^8.0",
+        "ext-swoole": ">=4.8.0"
+    },
+    "extra": {
+        "runtime": {
+            "class": "Think\\Runtime\\Runtime\\SwooleRuntime",
+            "host": "0.0.0.0",
+            "port": 9501,
+            "worker_num": 4,
+            "enable_coroutine": true,
+            "enable_static_handler": true,
+            "document_root": "./public",
+            "max_request": 10000,
+            "daemonize": false,
+            "log_file": "./runtime/swoole.log"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "think/runtime": true
+        }
+    }
+}

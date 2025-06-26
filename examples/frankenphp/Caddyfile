@@ -1,0 +1,22 @@
+{
+    frankenphp
+    order php_server before file_server
+}
+
+localhost:8080 {
+    root * public
+    
+    # Enable FrankenPHP worker mode
+    php_server {
+        worker ./public/index.php
+    }
+    
+    # Handle static files
+    file_server
+    
+    # Logs
+    log {
+        output stdout
+        format console
+    }
+}

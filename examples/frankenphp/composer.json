@@ -1,0 +1,25 @@
+{
+    "name": "think/runtime-frankenphp-example",
+    "description": "ThinkPHP Runtime FrankenPHP Example",
+    "type": "project",
+    "require": {
+        "think/runtime": "*",
+        "topthink/framework": "^8.0",
+        "dunglas/frankenphp": "^1.0"
+    },
+    "extra": {
+        "runtime": {
+            "class": "Think\\Runtime\\Runtime\\FrankenPHPRuntime",
+            "frankenphp_loop_max": 500,
+            "frankenphp_worker": true,
+            "enable_xdebug": false,
+            "ignore_user_abort": true,
+            "gc_collect_cycles": true
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "think/runtime": true
+        }
+    }
+}
