@@ -103,15 +103,15 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             'enable_fix' => true,           // 启用 session 修复
             'create_new_app' => false,      // 是否每次请求创建新应用实例（类似 ReactPHP）
             'preserve_session_cookies' => true, // 保留 session cookie
-            'debug_session' => false,       // 调试 session 处理
+            'debug_session' => false,       // 调试 session 处理 - 已禁用
         ],
         
         // 内存管理配置
         'memory' => [
             'enable_gc' => true,
-            'gc_interval' => 100, // 每100个请求GC一次
-            'context_cleanup_interval' => 60, // 60秒清理一次上下文
-            'max_context_size' => 1000, // 最大上下文数量
+            'gc_interval' => 20, // 每100个请求GC一次
+            'context_cleanup_interval' => 15, // 60秒清理一次上下文
+            'max_context_size' => 200, // 最大上下文数量
         ],
         
         // 性能监控配置
@@ -213,14 +213,14 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
         $config = array_merge($this->defaultConfig, $this->config);
 
-        echo "Workerman HTTP Server starting (Session Fixed)...\n";
-        echo "Listening on: {$config['host']}:{$config['port']}\n";
-        echo "Worker processes: {$config['count']}\n";
-        echo "Worker name: {$config['name']}\n";
-        echo "Session fix: " . ($config['session']['enable_fix'] ? 'ENABLED' : 'DISABLED') . "\n";
-        echo "New app per request: " . ($config['session']['create_new_app'] ? 'ENABLED' : 'DISABLED') . "\n";
-        echo "Memory limit: " . ini_get('memory_limit') . "\n";
-        echo "Press Ctrl+C to stop the server\n\n";
+        // echo "Workerman HTTP Server starting (Session Fixed)...\n";
+        // echo "Listening on: {$config['host']}:{$config['port']}\n";
+        // echo "Worker processes: {$config['count']}\n";
+        // echo "Worker name: {$config['name']}\n";
+        // echo "Session fix: " . ($config['session']['enable_fix'] ? 'ENABLED' : 'DISABLED') . "\n";
+        // echo "New app per request: " . ($config['session']['create_new_app'] ? 'ENABLED' : 'DISABLED') . "\n";
+        // echo "Memory limit: " . ini_get('memory_limit') . "\n";
+        // echo "Press Ctrl+C to stop the server\n\n";
 
         // 启动Worker
         Worker::runAll();
@@ -384,7 +384,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function onWorkerStart(Worker $worker): void
     {
-        echo "Worker #{$worker->id} started (PID: " . getmypid() . ") - Session Fixed Version\n";
+        // echo "Worker #{$worker->id} started (PID: " . getmypid() . ") - Session Fixed Version\n";
 
         $config = array_merge($this->defaultConfig, $this->config);
 
@@ -411,6 +411,11 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $startTime = microtime(true);
         $this->requestCount++;
         $this->memoryStats['request_count']++;
+            
+            // 智能内存监控
+            if ($this->memoryStats['request_count'] % 10 === 0) {
+                $this->smartMemoryMonitor();
+            }
 
         $config = array_merge($this->defaultConfig, $this->config);
 
@@ -419,11 +424,11 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             $this->performPeriodicGC();
 
             // Session 调试信息
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Processing request: " . $request->method() . " " . $request->uri() . "\n";
-                echo "DEBUG: Current \$_COOKIE before request: " . json_encode($_COOKIE) . "\n";
-                echo "DEBUG: Current session status: " . (session_status() === PHP_SESSION_ACTIVE ? 'active' : 'inactive') . "\n";
-            }
+            // if ($config['session']['debug_session']) {
+            //     echo "DEBUG: Processing request: " . $request->method() . " " . $request->uri() . "\n";
+            //     echo "DEBUG: Current \$_COOKIE before request: " . json_encode($_COOKIE) . "\n";
+            //     echo "DEBUG: Current session status: " . (session_status() === PHP_SESSION_ACTIVE ? 'active' : 'inactive') . "\n";
+            // }
 
             // 根据配置选择处理方式
             if ($config['session']['create_new_app']) {
@@ -504,9 +509,9 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             if ($config['session']['preserve_session_cookies']) {
                 $_COOKIE = $this->mergeSessionCookies($originalCookie, $_COOKIE);
 
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Merged cookies: " . json_encode($_COOKIE) . "\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Merged cookies: " . json_encode($_COOKIE) . "\n";
+                // }
             } else {
                 $_COOKIE = $originalCookie;
             }
@@ -587,9 +592,9 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         if ($config['session']['preserve_session_cookies']) {
             $_COOKIE = $this->mergeSessionCookies($originalCookie, $requestCookies);
             
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Merged cookies at start: " . json_encode($_COOKIE) . "\n";
-            }
+            // if ($config['session']['debug_session']) {
+            //     echo "DEBUG: Merged cookies at start: " . json_encode($_COOKIE) . "\n";
+            // }
         } else {
             $_COOKIE = $requestCookies;
         }
@@ -642,9 +647,9 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             if ($config['session']['preserve_session_cookies']) {
                 $_COOKIE = $this->mergeSessionCookies($originalCookie, $_COOKIE);
 
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Merged cookies (optimized): " . json_encode($_COOKIE) . "\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Merged cookies (optimized): " . json_encode($_COOKIE) . "\n";
+                // }
             } else {
                 $_COOKIE = $originalCookie;
             }
@@ -663,10 +668,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
     {
         $config = array_merge($this->defaultConfig, $this->config);
 
-        if ($config['session']['debug_session']) {
-            echo "DEBUG: Current \$_COOKIE before preprocessing: " . json_encode($_COOKIE) . "\n";
-            echo "DEBUG: Current session status: " . (session_status() === PHP_SESSION_ACTIVE ? 'active' : 'inactive') . "\n";
-        }
+        // if ($config['session']['debug_session']) {
+        //     echo "DEBUG: Current \$_COOKIE before preprocessing: " . json_encode($_COOKIE) . "\n";
+        //     echo "DEBUG: Current session status: " . (session_status() === PHP_SESSION_ACTIVE ? 'active' : 'inactive') . "\n";
+        // }
 
         // 设置全局变量
         $_GET = $request->get() ?? [];
@@ -737,7 +742,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function onWorkerStop(Worker $worker): void
     {
-        echo "Worker #{$worker->id} stopped (Session Fixed Version)\n";
+        // echo "Worker #{$worker->id} stopped (Session Fixed Version)\n";
 
         // 清理定时器
         foreach ($this->timers as $timerId) {
@@ -798,7 +803,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $config = array_merge($this->defaultConfig, $this->config);
 
         // 每30秒检查一次内存使用
-        $timerId = Timer::add(30, function() use ($config) {
+        $timerId = Timer::add(10, function() use ($config) {
             $currentMemory = memory_get_usage(true);
             $peakMemory = memory_get_peak_usage(true);
 
@@ -812,7 +817,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             $limitBytes = $this->parseMemoryLimit($memoryLimit);
 
             if ($currentMemory > $limitBytes * 0.8) {
-                echo "Warning: Memory usage is high: " . round($currentMemory / 1024 / 1024, 2) . "MB\n";
+                // echo "Warning: Memory usage is high: " . round($currentMemory / 1024 / 1024, 2) . "MB\n";
 
                 // 强制垃圾回收
                 gc_collect_cycles();
@@ -835,17 +840,15 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             return;
         }
 
-        $gcInterval = $config['memory']['gc_interval'] ?? 100;
+        $gcInterval = $config['memory']['gc_interval'] ?? 20; // 默认改为20
 
         if ($this->requestCount % $gcInterval === 0) {
-            $beforeMemory = memory_get_usage(true);
-            gc_collect_cycles();
-            $afterMemory = memory_get_usage(true);
-
-            $freed = $beforeMemory - $afterMemory;
-            if ($freed > 0) {
-                echo "Workerman GC freed " . round($freed / 1024 / 1024, 2) . "MB memory\n";
-            }
+            $this->aggressiveGarbageCollection();
+        }
+        
+        // 额外的内存检查
+        if ($this->requestCount % 5 === 0) {
+            $this->smartMemoryMonitor();
         }
     }
 
@@ -866,9 +869,9 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $duration = (microtime(true) - $startTime) * 1000; // 转换为毫秒
         $threshold = $config['monitor']['slow_request_threshold'] ?? 1000;
 
-        if ($duration > $threshold) {
-            echo "Slow request detected: {$duration}ms\n";
-        }
+        // if ($duration > $threshold) {
+        //     echo "Slow request detected: {$duration}ms\n";
+        // }
     }
 
     /**
@@ -918,10 +921,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
                 $removed++;
             }
 
-            if ($removed > 0) {
-                echo "Workerman cleaned {$removed} connection contexts\n";
-                gc_collect_cycles();
-            }
+            // if ($removed > 0) {
+            //     echo "Workerman cleaned {$removed} connection contexts\n";
+            //     gc_collect_cycles();
+            // }
         }
     }
 
@@ -935,11 +938,11 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         $currentMemory = memory_get_usage(true);
         $peakMemory = memory_get_peak_usage(true);
 
-        echo "Workerman Stats (Session Fixed) - ";
-        echo "Requests: {$this->memoryStats['request_count']}, ";
-        echo "Memory: " . round($currentMemory / 1024 / 1024, 2) . "MB, ";
-        echo "Peak: " . round($peakMemory / 1024 / 1024, 2) . "MB, ";
-        echo "Contexts: " . count($this->connectionContext) . "\n";
+        // echo "Workerman Stats (Session Fixed) - ";
+        // echo "Requests: {$this->memoryStats['request_count']}, ";
+        // echo "Memory: " . round($currentMemory / 1024 / 1024, 2) . "MB, ";
+        // echo "Peak: " . round($peakMemory / 1024 / 1024, 2) . "MB, ";
+        // echo "Contexts: " . count($this->connectionContext) . "\n";
     }
 
     /**
@@ -1541,9 +1544,9 @@ $config = [
         try {
             // 检查 headers 是否已发送
             if (headers_sent($file, $line)) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Headers already sent in $file:$line, using alternative session handling\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Headers already sent in $file:$line, using alternative session handling\n";
+                // }
                 $this->handleSessionWithoutStart($config);
                 return;
             }
@@ -1558,28 +1561,28 @@ $config = [
             if (isset($_COOKIE[$sessionName]) && !empty($_COOKIE[$sessionName])) {
                 session_id($_COOKIE[$sessionName]);
                 
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Set session ID from cookie: " . $_COOKIE[$sessionName] . "\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Set session ID from cookie: " . $_COOKIE[$sessionName] . "\n";
+                // }
             }
 
             // 启动 session
             if (session_start()) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session started successfully, ID: " . session_id() . "\n";
-                    echo "DEBUG: Session data: " . json_encode($_SESSION) . "\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Session started successfully, ID: " . session_id() . "\n";
+                //     echo "DEBUG: Session data: " . json_encode($_SESSION) . "\n";
+                // }
             } else {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Failed to start session\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Failed to start session\n";
+                // }
                 $this->handleSessionWithoutStart($config);
             }
 
         } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Session initialization error: " . $e->getMessage() . "\n";
-            }
+            // if ($config['session']['debug_session']) {
+            //     echo "DEBUG: Session initialization error: " . $e->getMessage() . "\n";
+            // }
             $this->handleSessionWithoutStart($config);
         }
     }
@@ -1598,35 +1601,35 @@ $config = [
 
         try {
             if (session_status() === PHP_SESSION_ACTIVE) {
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Finalizing session, ID: " . session_id() . "\n";
-                    echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Finalizing session, ID: " . session_id() . "\n";
+                //     echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
+                // }
                 
                 // 写入并关闭 session
                 session_write_close();
                 
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session written and closed\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Session written and closed\n";
+                // }
             } else if (!empty($this->currentSessionId)) {
                 // 使用替代方式保存 session
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Saving session to file, ID: " . $this->currentSessionId . "\n";
-                    echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
-                }
-                
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Saving session to file, ID: " . $this->currentSessionId . "\n";
+                //     echo "DEBUG: Final session data: " . json_encode($_SESSION) . "\n";
+                // }
+
                 $this->writeSessionToFile($this->currentSessionId, $_SESSION);
-                
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Session saved to file\n";
-                }
+
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Session saved to file\n";
+                // }
             }
 
         } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Session finalization error: " . $e->getMessage() . "\n";
-            }
+            // if ($config['session']['debug_session']) {
+            //     echo "DEBUG: Session finalization error: " . $e->getMessage() . "\n";
+            // }
         }
     }
 
@@ -1639,9 +1642,9 @@ $config = [
      */
     protected function handleSessionWithoutStart(array $config): void
     {
-        if ($config['session']['debug_session']) {
-            echo "DEBUG: Using alternative session handling (file-based)\n";
-        }
+        // if ($config['session']['debug_session']) {
+        //     echo "DEBUG: Using alternative session handling (file-based)\n";
+        // }
 
         try {
             // 从 cookie 中获取 session ID
@@ -1651,9 +1654,9 @@ $config = [
             if (empty($sessionId)) {
                 // 生成新的 session ID
                 $sessionId = $this->generateSessionId();
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Generated new session ID: $sessionId\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Generated new session ID: $sessionId\n";
+                // }
             }
 
             // 直接从文件读取 session 数据
@@ -1661,23 +1664,23 @@ $config = [
             
             if ($sessionData !== false) {
                 $_SESSION = $sessionData;
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: Loaded session data from file: " . json_encode($_SESSION) . "\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: Loaded session data from file: " . json_encode($_SESSION) . "\n";
+                // }
             } else {
                 $_SESSION = [];
-                if ($config['session']['debug_session']) {
-                    echo "DEBUG: No existing session data, starting with empty session\n";
-                }
+                // if ($config['session']['debug_session']) {
+                //     echo "DEBUG: No existing session data, starting with empty session\n";
+                // }
             }
 
             // 设置当前 session ID（用于后续保存）
             $this->currentSessionId = $sessionId;
 
         } catch (Throwable $e) {
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Alternative session handling error: " . $e->getMessage() . "\n";
-            }
+            // if ($config['session']['debug_session']) {
+            //     echo "DEBUG: Alternative session handling error: " . $e->getMessage() . "\n";
+            // }
             $_SESSION = [];
         }
     }
@@ -1756,6 +1759,101 @@ $config = [
         }
     }
 
+
+    /**
+     * 紧急内存清理
+     * 当内存使用过高时触发
+     */
+    protected function emergencyMemoryCleanup(): void
+    {
+        $beforeMemory = memory_get_usage(true);
+        
+        // 1. 清空所有连接上下文
+        $this->connectionContext = [];
+        
+        // 2. 重置内存统计
+        $this->memoryStats = [
+            'peak_usage' => 0,
+            'request_count' => $this->memoryStats['request_count'] ?? 0,
+            'last_cleanup' => time(),
+        ];
+        
+        // 3. 多次强制垃圾回收
+        for ($i = 0; $i < 5; $i++) {
+            gc_collect_cycles();
+        }
+        
+        // 4. 清理应用缓存（如果可能）
+        if ($this->app && method_exists($this->app, 'clearCache')) {
+            $this->app->clearCache();
+        }
+        
+        $afterMemory = memory_get_usage(true);
+        $freed = $beforeMemory - $afterMemory;
+        
+        if ($freed > 0) {
+            error_log("Emergency cleanup freed " . round($freed / 1024 / 1024, 2) . "MB memory");
+        }
+    }
+
+    /**
+     * 激进的垃圾回收
+     */
+    protected function aggressiveGarbageCollection(): void
+    {
+        $beforeMemory = memory_get_usage(true);
+        
+        // 多次垃圾回收
+        for ($i = 0; $i < 3; $i++) {
+            gc_collect_cycles();
+        }
+        
+        // 重置内存峰值（如果函数存在）
+        if (function_exists('memory_reset_peak_usage')) {
+            memory_reset_peak_usage();
+        }
+        
+        $afterMemory = memory_get_usage(true);
+        $freed = $beforeMemory - $afterMemory;
+        
+        if ($freed > 1024 * 1024) { // 只记录释放超过1MB的情况
+            error_log("Aggressive GC freed " . round($freed / 1024 / 1024, 2) . "MB memory");
+        }
+    }
+
+    /**
+     * 智能内存监控
+     */
+    protected function smartMemoryMonitor(): void
+    {
+        $currentMemory = memory_get_usage(true);
+        $peakMemory = memory_get_peak_usage(true);
+        $config = array_merge($this->defaultConfig, $this->config);
+        $memoryLimit = $this->parseMemoryLimit($config['monitor']['memory_limit'] ?? '100M');
+        
+        $memoryUsageRatio = $currentMemory / $memoryLimit;
+        
+        // 更严格的内存管理策略
+        if ($memoryUsageRatio > 0.95) {
+            // 超过95%，立即重启进程
+            error_log("Memory usage critical (>95%), restarting worker");
+            posix_kill(getmypid(), SIGTERM);
+        } elseif ($memoryUsageRatio > 0.9) {
+            // 超过90%，紧急清理
+            $this->emergencyMemoryCleanup();
+            
+            // 清理事件相关的静态变量
+            if (class_exists('\app\common\EventRateLimiter')) {
+                \app\common\EventRateLimiter::getStats(); // 触发清理
+            }
+        } elseif ($memoryUsageRatio > 0.8) {
+            // 超过80%，激进GC
+            $this->aggressiveGarbageCollection();
+        } elseif ($memoryUsageRatio > 0.7) {
+            // 超过70%，普通GC
+            gc_collect_cycles();
+        }
+    }
     /**
      * 当前 session ID
      *
