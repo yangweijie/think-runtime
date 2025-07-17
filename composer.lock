@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "52ce36e628aee2285d16811c594f76cf",
+    "content-hash": "77115639f0b0e988eac4e12742f03c02",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -496,6 +496,57 @@
                 }
             ],
             "time": "2023-11-08T09:30:43+00:00"
+        },
+        {
+            "name": "phpstan/phpstan",
+            "version": "2.1.x-dev",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/phpstan/phpstan.git",
+                "reference": "f67286bc011f92cd07ba700c6cfe0d7180598c41"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://mirrors.huaweicloud.com/repository/php/phpstan/phpstan/2.1.x-dev/phpstan-phpstan-2.1.x-dev.zip",
+                "reference": "f67286bc011f92cd07ba700c6cfe0d7180598c41",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^7.4|^8.0"
+            },
+            "conflict": {
+                "phpstan/phpstan-shim": "*"
+            },
+            "default-branch": true,
+            "bin": [
+                "phpstan",
+                "phpstan.phar"
+            ],
+            "type": "library",
+            "autoload": {
+                "files": [
+                    "bootstrap.php"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "PHPStan - PHP Static Analysis Tool",
+            "keywords": [
+                "dev",
+                "static analysis"
+            ],
+            "funding": [
+                {
+                    "url": "https://github.com/ondrejmirtes",
+                    "type": "github"
+                },
+                {
+                    "url": "https://github.com/phpstan",
+                    "type": "github"
+                }
+            ],
+            "time": "2025-02-03T10:36:50+00:00"
         },
         {
             "name": "psr/container",
@@ -5198,12 +5249,14 @@
     "minimum-stability": "dev",
     "stability-flags": {
         "mattvb91/caddy-php": 20,
+        "phpstan/phpstan": 20,
         "workerman/workerman": 20
     },
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.1"
+        "php": ">=8.1",
+        "ext-sockets": "*"
     },
     "platform-dev": {},
     "plugin-api-version": "2.6.0"

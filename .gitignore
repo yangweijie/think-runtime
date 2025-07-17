@@ -3,3 +3,4 @@
 *.cache
 runtime
 *.log
+/composer.lock

@@ -1,0 +1,65 @@
+parameters:
+	level: 4
+	paths:
+		- src
+	treatPhpDocTypesAsCertain: false
+	ignoreErrors:
+		# 忽略未找到的类 (可选依赖)
+		- '#Access to property .* on an unknown class Ripple\\.*#'
+		- '#Call to method .* on an unknown class Ripple\\.*#'
+		- '#Parameter .* has invalid type Ripple\\.*#'
+		- '#Method .* has invalid return type Ripple\\.*#'
+		- '#Instantiated class Ripple\\.*#'
+		- '#Class Ripple\\.*#'
+		- '#Property .* has unknown class Ripple\\.*#'
+		- '#Call to static method .* on an unknown class Ripple\\.*#'
+		
+		# React 相关错误
+		- '#Call to method .* on an unknown class React\\.*#'
+		- '#Parameter .* has invalid type React\\.*#'
+		- '#Method .* has invalid return type React\\.*#'
+		- '#Instantiated class React\\.*#'
+		- '#Property .* has unknown class React\\.*#'
+		- '#Call to static method .* on an unknown class React\\.*#'
+		- '#Used function React\\Promise\\resolve not found#'
+		- '#Function React\\Promise\\resolve not found#'
+		
+		# 忽略 nullCoalesce 警告
+		- '#Property .* on left side of \?\? is not nullable#'
+		- '#Variable .* on left side of \?\? always exists and is not nullable#'
+		- '#Expression on left side of \?\? is not nullable#'
+		
+		# 忽略 isset 警告
+		- '#Property .* in isset\(\) is not nullable#'
+		
+		# 忽略布尔表达式警告
+		- '#Negated boolean expression is always false#'
+		- '#Right side of && is always true#'
+		- '#Strict comparison using !== between .* and null will always evaluate to true#'
+		- '#Strict comparison using === between .* and null will always evaluate to false#'
+		
+		# 忽略函数调用警告
+		- '#Call to function method_exists\(\) with .* will always evaluate to true#'
+		- '#Call to function is_string\(\) with string will always evaluate to true#'
+		- '#Call to function is_int\(\) with .* will always evaluate to false#'
+		
+		# 忽略特定方法错误
+		- '#Call to an undefined method Swoole\\Http\\Server::push\(\)#'
+		- '#Call to an undefined method mattvb91\\CaddyPhp\\Config\\Apps\\Http\\Server\\Routes\\Handle\\ReverseProxy\\Transport\\FastCGI::addEnv\(\)#'
+		
+		# 忽略返回类型错误
+		- '#Method yangweijie\\thinkRuntime\\exception\\HeaderConflictException::criticalConflict\(\) should return static\(.*\) but returns#'
+		- '#Method yangweijie\\thinkRuntime\\exception\\HeaderConflictException::incompatibleValues\(\) should return static\(.*\) but returns#'
+		- '#Method yangweijie\\thinkRuntime\\exception\\HeaderMergingException::duplicateHeader\(\) should return static\(.*\) but returns#'
+		- '#Method yangweijie\\thinkRuntime\\exception\\HeaderMergingException::mergeFailed\(\) should return static\(.*\) but returns#'
+		- '#Method yangweijie\\thinkRuntime\\exception\\HeaderMergingException::invalidValue\(\) should return static\(.*\) but returns#'
+		
+		# 忽略参数数量错误
+		- '#Method yangweijie\\thinkRuntime\\adapter\\RippleAdapter::formatSeconds\(\) invoked with 2 parameters, 1 required#'
+		- '#Method yangweijie\\thinkRuntime\\adapter\\RippleAdapter::stop\(\) invoked with 1 parameter, 0 required#'
+		
+		# 忽略其他错误
+		- '#Function app not found#'
+		- '#Unreachable statement - code above always terminates#'
+		- '#Comparison operation ">" between \(array\|float\|int\) and 0 results in an error#'
+		- '#Anonymous function has an unused use#'

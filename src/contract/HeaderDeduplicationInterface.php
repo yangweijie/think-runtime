@@ -62,6 +62,14 @@ interface HeaderDeduplicationInterface
     public function detectHeaderConflicts(array $headers1, array $headers2): array;
 
     /**
+     * 检查头部是否为唯一头部
+     *
+     * @param string $name 头部名称
+     * @return bool 是否为唯一头部
+     */
+    public function isUniqueHeader(string $name): bool;
+
+    /**
      * 启用或禁用调试模式
      *
      * @param bool $enabled 是否启用调试

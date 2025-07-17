@@ -11,6 +11,6 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "Files have been modified. Please check all PHP files (*.php) in the workspace (exclude  vendor dir) for syntax errors using `php -l` command and check for formatting issues. Report any syntax errors found and suggest fixes. Also check if the PHP code follows PSR standards for formatting and suggest improvements if needed."
+    "prompt": "Files have been modified. Please check all PHP files (*.php) in the workspace (exclude  vendor dir) for syntax errors using  a command  `composer check` and \" Get-ChildItem -Path . -Filter \"*.php\" -Recurse |      Where-Object { $_.FullName -notmatch [regex]::Escape((Resolve-Path .\\vendor)) } |      ForEach-Object {          Write-Host \"Checking: $($_.FullName)\";          php -l $_.FullName      }\" command and check. Report any syntax errors found and suggest fixes. Also check if the PHP code follows PSR standards for formatting and suggest improvements if needed."
   }
 }
