@@ -207,3 +207,137 @@ test('can reset worker', function () {
     // 在测试环境中，这应该返回成功状态
     expect($result)->toBe(true);
 });
+// Header deduplication integration tests
+test('roadrunner adapter uses header deduplication service', function () {
+    $this->createApplication();
+    $adapter = new RoadrunnerAdapter($this->app, []);
+
+    // Verify the adapter has access to header deduplication service
+    expect(method_exists($adapter, 'processResponseHeaders'))->toBe(true);
+    expect(method_exists($adapter, 'getHeaderService'))->toBe(true);
+
+    // Test that the header service is properly initialized
+    $headerService = $adapter->getHeaderService();
+    expect($headerService)->not->toBeNull();
+    expect($headerService)->toBeInstanceOf(\yangweijie\thinkRuntime\contract\HeaderDeduplicationInterface::class);
+});
+
+test('roadrunner adapter handles response headers without duplication', function () {
+    $this->createApplication();
+    $adapter = new RoadrunnerAdapter($this->app, []);
+
+    // Create PSR-7 response with headers that might be duplicated
+    $psrResponse = $this->createPsr7Response(200, [
+        'Content-Type' => 'application/json',
+        'Content-Length' => '45',
+        'X-RoadRunner-Header' => 'rr-test',
+        'Cache-Control' => 'public, max-age=3600'
+    ], '{"message": "RoadRunner response test"}');
+
+    // Test that processResponseHeaders method works correctly
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    expect($finalHeaders)->toBeArray();
+
+    // Count occurrences of each header (case-insensitive)
+    $headerCounts = [];
+    foreach ($finalHeaders as $name => $value) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    // Each header should appear only once
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['content-length'])->toBe(1);
+    expect($headerCounts['x-roadrunner-header'])->toBe(1);
+    expect($headerCounts['cache-control'])->toBe(1);
+});
+
+test('roadrunner adapter handles case-insensitive headers correctly', function () {
+    $this->createApplication();
+    $adapter = new RoadrunnerAdapter($this->app, []);
+
+    // Create PSR-7 response with mixed case headers
+    $psrResponse = $this->createPsr7Response(200, [
+        'content-type' => 'application/json',
+        'Content-Type' => 'text/html', // Should be deduplicated
+        'X-RR-Custom' => 'value1',
+        'x-rr-custom' => 'value2' // Should be deduplicated
+    ], '{"test": "roadrunner"}');
+
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    // Count occurrences of each header (case-insensitive)
+    $headerCounts = [];
+    foreach ($finalHeaders as $name => $value) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    // Each header should appear only once after deduplication
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['x-rr-custom'])->toBe(1);
+});
+
+test('roadrunner adapter handles psr7 response conversion correctly', function () {
+    $this->createApplication();
+    $adapter = new RoadrunnerAdapter($this->app, []);
+
+    // Create PSR-7 response with compression headers
+    $psrResponse = $this->createPsr7Response(200, [
+        'Content-Type' => 'text/html',
+        'Content-Encoding' => 'gzip',
+        'Content-Length' => '180',
+        'Vary' => 'Accept-Encoding',
+        'X-Powered-By' => 'RoadRunner'
+    ], str_repeat('RoadRunner compressed content ', 9));
+
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    // Verify no duplicate headers
+    $headerCounts = [];
+    foreach ($finalHeaders as $name => $value) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['content-encoding'])->toBe(1);
+    expect($headerCounts['content-length'])->toBe(1);
+    expect($headerCounts['vary'])->toBe(1);
+    expect($headerCounts['x-powered-by'])->toBe(1);
+});
+
+test('roadrunner adapter preserves worker headers', function () {
+    $this->createApplication();
+    $adapter = new RoadrunnerAdapter($this->app, []);
+
+    // Create PSR-7 response with RoadRunner-specific headers
+    $psrResponse = $this->createPsr7Response(200, [
+        'X-RR-Worker-ID' => 'worker-1',
+        'X-RR-Request-ID' => 'req-12345',
+        'X-RR-Memory-Usage' => '25MB',
+        'X-Response-Time' => '0.025s'
+    ], 'RoadRunner worker response');
+
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    // Verify all RoadRunner-specific headers are preserved
+    $expectedHeaders = [
+        'x-rr-worker-id',
+        'x-rr-request-id',
+        'x-rr-memory-usage',
+        'x-response-time'
+    ];
+
+    foreach ($expectedHeaders as $expectedHeader) {
+        $found = false;
+        foreach ($finalHeaders as $name => $value) {
+            if (strtolower($name) === $expectedHeader) {
+                $found = true;
+                break;
+            }
+        }
+        expect($found)->toBe(true, "RoadRunner header {$expectedHeader} should be preserved");
+    }
+});

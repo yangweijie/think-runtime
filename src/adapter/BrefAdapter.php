@@ -551,25 +551,72 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
     {
         $config = array_merge($this->defaultConfig, $this->config);
 
-        $lambdaResponse = [
-            'statusCode' => $response->getStatusCode(),
-            'headers' => [],
-            'body' => (string) $response->getBody(),
-        ];
-
-        // 添加响应头
-        foreach ($response->getHeaders() as $name => $values) {
-            $lambdaResponse['headers'][$name] = implode(', ', $values);
-        }
+        // 构建运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
 
         // 添加CORS头（如果启用）
         if ($config['http']['enable_cors']) {
-            $lambdaResponse['headers']['Access-Control-Allow-Origin'] = $config['http']['cors_origin'];
-            $lambdaResponse['headers']['Access-Control-Allow-Methods'] = $config['http']['cors_methods'];
-            $lambdaResponse['headers']['Access-Control-Allow-Headers'] = $config['http']['cors_headers'];
+            $runtimeHeaders['Access-Control-Allow-Origin'] = $config['http']['cors_origin'];
+            $runtimeHeaders['Access-Control-Allow-Methods'] = $config['http']['cors_methods'];
+            $runtimeHeaders['Access-Control-Allow-Headers'] = $config['http']['cors_headers'];
         }
 
+        // 添加Bref特定头部
+        $runtimeHeaders['X-Powered-By'] = 'Bref/ThinkPHP-Runtime';
+        $runtimeHeaders['X-Runtime'] = 'AWS Lambda';
+
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+
+        $lambdaResponse = [
+            'statusCode' => $response->getStatusCode(),
+            'headers' => $finalHeaders,
+            'body' => (string) $response->getBody(),
+        ];
+
         return $lambdaResponse;
+    }
+
+    /**
+     * 处理Bref Lambda响应头部
+     * 使用头部去重服务处理响应头部，防止重复
+     *
+     * @param ResponseInterface $response PSR-7响应对象
+     * @return ResponseInterface 处理后的PSR-7响应对象
+     */
+    protected function processBrefResponseHeaders(ResponseInterface $response): ResponseInterface
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        
+        // 构建Bref运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+        
+        // 添加CORS头（如果启用）
+        if ($config['http']['enable_cors']) {
+            $runtimeHeaders['Access-Control-Allow-Origin'] = $config['http']['cors_origin'];
+            $runtimeHeaders['Access-Control-Allow-Methods'] = $config['http']['cors_methods'];
+            $runtimeHeaders['Access-Control-Allow-Headers'] = $config['http']['cors_headers'];
+        }
+        
+        // 添加Bref特定头部
+        $runtimeHeaders['X-Powered-By'] = 'Bref/ThinkPHP-Runtime';
+        $runtimeHeaders['X-Runtime'] = 'AWS Lambda';
+        
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+        
+        // 创建新的响应对象，先移除所有现有头部
+        $newResponse = $response;
+        foreach ($response->getHeaders() as $name => $values) {
+            $newResponse = $newResponse->withoutHeader($name);
+        }
+        
+        // 添加去重后的头部
+        foreach ($finalHeaders as $name => $value) {
+            $newResponse = $newResponse->withHeader($name, $value);
+        }
+        
+        return $newResponse;
     }
 
     /**

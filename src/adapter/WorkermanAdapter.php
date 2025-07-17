@@ -568,6 +568,7 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
      */
     protected function handleWorkermanRequestFixed(Request $request): Response
     {
+        $request_time_float = microtime(true);
         $config = array_merge($this->defaultConfig, $this->config);
 
         // 保存原始全局变量
@@ -583,16 +584,16 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
             $_POST = $request->post();
             $_FILES = $request->file();
             // 智能设置 cookie（在设置全局变量时就处理）
-        $requestCookies = $request->cookie();
-        if ($config['session']['preserve_session_cookies']) {
-            $_COOKIE = $this->mergeSessionCookies($originalCookie, $requestCookies);
-            
-            if ($config['session']['debug_session']) {
-                echo "DEBUG: Merged cookies at start: " . json_encode($_COOKIE) . "\n";
+            $requestCookies = $request->cookie();
+            if ($config['session']['preserve_session_cookies']) {
+                $_COOKIE = $this->mergeSessionCookies($originalCookie, $requestCookies);
+
+                if ($config['session']['debug_session']) {
+                    echo "DEBUG: Merged cookies at start: " . json_encode($_COOKIE) . "\n";
+                }
+            } else {
+                $_COOKIE = $requestCookies;
             }
-        } else {
-            $_COOKIE = $requestCookies;
-        }
 
             // 构建 $_SERVER 变量
             $_SERVER = array_merge($_SERVER, [
@@ -619,6 +620,8 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
                 'SERVER_PORT' => $this->getConfig()['port'],
                 'HTTPS' => '',
             ]);
+            $this->modifyProperty($this->app, $request_time_float, 'beginTime');
+            $this->modifyProperty($this->app, memory_get_usage(), 'beginMem');
 
             // 处理请求 - 直接使用 Workerman 请求处理
             // 关键修复：正确处理 session
@@ -1099,28 +1102,34 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
         // 获取响应状态码
         $statusCode = $psrResponse->getStatusCode();
 
-        // 获取响应头
-        $headers = [];
-        foreach ($psrResponse->getHeaders() as $name => $values) {
-            $headers[$name] = implode(', ', $values);
-        }
-
         // 获取响应体
         $body = (string) $psrResponse->getBody();
 
+        // 构建运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders($this->currentRequest);
+
         // 添加 Keep-Alive 头
         if ($this->currentRequest !== null) {
-            $this->addKeepAliveHeaders($this->currentRequest, $headers);
+            $this->addKeepAliveHeaders($this->currentRequest, $runtimeHeaders);
         }
 
-        // 应用压缩
+        // 应用压缩（传入运行时头部而不是PSR-7头部）
         if ($this->currentRequest !== null) {
-            $compressedData = $this->applyCompression($this->currentRequest, $body, $headers);
+            $compressedData = $this->applyCompression($this->currentRequest, $body, $runtimeHeaders);
         } else {
             $compressedData = ['body' => $body, 'compressed' => false];
         }
 
-        return new Response($statusCode, $headers, $compressedData['body']);
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($psrResponse, $runtimeHeaders);
+
+        // 调试日志：记录头部处理结果
+        $config = array_merge($this->defaultConfig, $this->config);
+        if ($config['session']['debug_session'] ?? false) {
+            $this->logHeaderProcessing($psrResponse, $runtimeHeaders, $finalHeaders);
+        }
+
+        return new Response($statusCode, $finalHeaders, $compressedData['body']);
     }
 
     /**
@@ -1169,11 +1178,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
             // 对错误响应也应用压缩
             if ($request !== null) {
-            $compressedError = $this->applyCompression($request, $errorBody, $errorHeaders);
-        } else {
-            $compressedError = ['body' => $errorBody, 'compressed' => false];
-        }
-
+                $compressedError = $this->applyCompression($request, $errorBody, $errorHeaders);
+            } else {
+                $compressedError = ['body' => $errorBody, 'compressed' => false];
+            }
             return new Response(500, $errorHeaders, $compressedError['body']);
         }
     }
@@ -1235,7 +1243,10 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
         // 添加压缩相关头信息
         $headers['Content-Encoding'] = $compressionType;
-        $headers['Content-Length'] = strlen($compressedBody);
+        // 只有在没有Content-Length头部时才设置，避免重复
+        if (!isset($headers['Content-Length']) && !isset($headers['content-length'])) {
+            $headers['Content-Length'] = strlen($compressedBody);
+        }
         $headers['Vary'] = 'Accept-Encoding';
 
         return ['body' => $compressedBody, 'compressed' => true];
@@ -1302,6 +1313,52 @@ class WorkermanAdapter extends AbstractRuntime implements AdapterInterface
 
         $headers['Connection'] = 'keep-alive';
         $headers['Keep-Alive'] = "timeout={$timeout}, max={$maxRequests}";
+    }
+
+    /**
+     * 构建Workerman运行时特定的头部
+     *
+     * @param mixed $request 请求对象
+     * @return array 运行时头部数组
+     */
+    protected function buildRuntimeHeaders($request = null): array
+    {
+        $headers = parent::buildRuntimeHeaders($request);
+
+        // 添加Workerman特定的头部
+        $headers['Server'] = 'Workerman/' . (defined('Workerman\\Worker::VERSION') ? \Workerman\Worker::VERSION : '1.0');
+        
+        // 不在这里设置Content-Length，让压缩方法或PSR-7响应来处理
+        // 这样可以避免重复设置
+        
+        return $headers;
+    }
+
+    /**
+     * 记录头部处理过程的调试信息
+     *
+     * @param ResponseInterface $psrResponse PSR-7响应
+     * @param array $runtimeHeaders 运行时头部
+     * @param array $finalHeaders 最终头部
+     * @return void
+     */
+    protected function logHeaderProcessing(ResponseInterface $psrResponse, array $runtimeHeaders, array $finalHeaders): void
+    {
+        $psrHeaders = [];
+        foreach ($psrResponse->getHeaders() as $name => $values) {
+            $psrHeaders[$name] = is_array($values) ? implode(', ', $values) : $values;
+        }
+
+        $conflicts = $this->detectResponseHeaderConflicts($psrResponse, $runtimeHeaders);
+
+        echo "DEBUG: Workerman Header Processing:\n";
+        echo "  PSR-7 Headers: " . json_encode($psrHeaders) . "\n";
+        echo "  Runtime Headers: " . json_encode($runtimeHeaders) . "\n";
+        echo "  Final Headers: " . json_encode($finalHeaders) . "\n";
+        
+        if (!empty($conflicts)) {
+            echo "  Header Conflicts Resolved: " . implode(', ', $conflicts) . "\n";
+        }
     }
 
     /**

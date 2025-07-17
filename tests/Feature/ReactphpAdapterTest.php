@@ -237,3 +237,231 @@ test('validates port configuration', function () {
     $adapter3 = new ReactphpAdapter($this->app, ['port' => 65535]);
     expect($adapter3->getConfig()['port'])->toBe(65535);
 });
+
+test('handles header deduplication correctly', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // 测试头部去重服务是否可用
+    $hasHeaderService = method_exists($adapter, 'getHeaderService');
+    expect($hasHeaderService)->toBe(true);
+
+    // 测试构建运行时头部方法
+    $hasBuildRuntimeHeaders = method_exists($adapter, 'buildRuntimeHeaders');
+    expect($hasBuildRuntimeHeaders)->toBe(true);
+
+    // 测试处理响应头部方法
+    $hasProcessResponseHeaders = method_exists($adapter, 'processResponseHeaders');
+    expect($hasProcessResponseHeaders)->toBe(true);
+});
+
+test('error handling uses header deduplication', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // 检查ReactPHP是否可用
+    if (!$adapter->isSupported()) {
+        $this->markTestSkipped('ReactPHP is not available');
+        return;
+    }
+
+    // 创建一个测试异常
+    $exception = new \Exception('Test error', 500);
+
+    // 使用反射调用 handleReactError 方法
+    $reflection = new \ReflectionClass($adapter);
+    $method = $reflection->getMethod('handleReactError');
+    $method->setAccessible(true);
+
+    $response = $method->invoke($adapter, $exception);
+
+    // 验证响应是 ReactPHP Response 实例
+    expect($response)->toBeInstanceOf(\React\Http\Message\Response::class);
+
+    // 验证状态码
+    expect($response->getStatusCode())->toBe(500);
+
+    // 验证头部包含 Content-Type
+    $headers = $response->getHeaders();
+    expect($headers)->toHaveKey('Content-Type');
+    expect($headers['Content-Type'])->toContain('application/json');
+});
+
+// Header deduplication integration tests
+test('reactphp adapter prevents header duplication in request handling', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // Create a test request
+    $request = $this->createPsr7Request('GET', '/test', [
+        'Accept' => 'application/json',
+        'User-Agent' => 'Test-Client/1.0'
+    ]);
+
+    // Mock the handleRequest method to return a response with headers
+    $mockResponse = $this->createPsr7Response(200, [
+        'Content-Type' => 'application/json',
+        'Content-Length' => '25',
+        'X-Custom-Header' => 'test-value'
+    ], '{"message": "success"}');
+
+    // Use reflection to access protected methods
+    $reflection = new \ReflectionClass($adapter);
+    
+    // Mock the handleRequest method
+    $adapter = new class($this->app, []) extends \yangweijie\thinkRuntime\adapter\ReactphpAdapter {
+        private $mockResponse;
+        
+        public function setMockResponse($response) {
+            $this->mockResponse = $response;
+        }
+        
+        public function handleRequest($request) {
+            return $this->mockResponse;
+        }
+    };
+    
+    $adapter->setMockResponse($mockResponse);
+
+    // Call handleReactRequest
+    $promise = $adapter->handleReactRequest($request);
+    
+    // Since we're testing, we need to resolve the promise
+    $reactResponse = null;
+    $promise->then(function($response) use (&$reactResponse) {
+        $reactResponse = $response;
+    });
+
+    expect($reactResponse)->toBeInstanceOf(\React\Http\Message\Response::class);
+    expect($reactResponse->getStatusCode())->toBe(200);
+
+    // Verify headers are properly processed
+    $headers = $reactResponse->getHeaders();
+    
+    // Count Content-Length headers to ensure no duplication
+    $contentLengthCount = 0;
+    foreach ($headers as $name => $values) {
+        if (strtolower($name) === 'content-length') {
+            $contentLengthCount++;
+        }
+    }
+    expect($contentLengthCount)->toBe(1);
+});
+
+test('reactphp adapter uses header deduplication service', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // Verify the adapter has access to header deduplication service
+    expect(method_exists($adapter, 'processResponseHeaders'))->toBe(true);
+    expect(method_exists($adapter, 'getHeaderService'))->toBe(true);
+
+    // Test that the header service is properly initialized
+    $headerService = $adapter->getHeaderService();
+    expect($headerService)->not->toBeNull();
+    expect($headerService)->toBeInstanceOf(\yangweijie\thinkRuntime\contract\HeaderDeduplicationInterface::class);
+});
+
+test('reactphp adapter handles case-insensitive headers correctly', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    // Create a request
+    $request = $this->createPsr7Request('POST', '/api/test', [
+        'Content-Type' => 'application/json'
+    ], '{"test": "data"}');
+
+    // Create a response with mixed case headers
+    $mockResponse = $this->createPsr7Response(200, [
+        'content-type' => 'application/json',
+        'Content-Type' => 'text/html', // Should be deduplicated
+        'X-Custom-Header' => 'value1',
+        'x-custom-header' => 'value2' // Should be deduplicated
+    ], '{"result": "success"}');
+
+    // Create a testable adapter
+    $adapter = new class($this->app, []) extends \yangweijie\thinkRuntime\adapter\ReactphpAdapter {
+        private $mockResponse;
+        
+        public function setMockResponse($response) {
+            $this->mockResponse = $response;
+        }
+        
+        public function handleRequest($request) {
+            return $this->mockResponse;
+        }
+    };
+    
+    $adapter->setMockResponse($mockResponse);
+
+    // Call handleReactRequest
+    $promise = $adapter->handleReactRequest($request);
+    
+    $reactResponse = null;
+    $promise->then(function($response) use (&$reactResponse) {
+        $reactResponse = $response;
+    });
+
+    expect($reactResponse)->toBeInstanceOf(\React\Http\Message\Response::class);
+
+    $headers = $reactResponse->getHeaders();
+
+    // Count occurrences of each header (case-insensitive)
+    $headerCounts = [];
+    foreach ($headers as $name => $values) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    // Each header should appear only once after deduplication
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['x-custom-header'])->toBe(1);
+});
+
+test('reactphp adapter handles compression headers without duplication', function () {
+    $this->createApplication();
+    $adapter = new ReactphpAdapter($this->app, []);
+
+    $request = $this->createPsr7Request('GET', '/large-content');
+
+    // Create response with compression headers
+    $mockResponse = $this->createPsr7Response(200, [
+        'Content-Type' => 'text/html',
+        'Content-Encoding' => 'gzip',
+        'Content-Length' => '500'
+    ], str_repeat('large content block ', 25));
+
+    $adapter = new class($this->app, []) extends \yangweijie\thinkRuntime\adapter\ReactphpAdapter {
+        private $mockResponse;
+        
+        public function setMockResponse($response) {
+            $this->mockResponse = $response;
+        }
+        
+        public function handleRequest($request) {
+            return $this->mockResponse;
+        }
+    };
+    
+    $adapter->setMockResponse($mockResponse);
+
+    $promise = $adapter->handleReactRequest($request);
+    
+    $reactResponse = null;
+    $promise->then(function($response) use (&$reactResponse) {
+        $reactResponse = $response;
+    });
+
+    $headers = $reactResponse->getHeaders();
+
+    // Verify no duplicate headers
+    $headerCounts = [];
+    foreach ($headers as $name => $values) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['content-encoding'])->toBe(1);
+    expect($headerCounts['content-length'])->toBe(1);
+});

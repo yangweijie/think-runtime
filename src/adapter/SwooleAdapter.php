@@ -802,9 +802,15 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
         // 设置状态码
         $swooleResponse->status($psr7Response->getStatusCode());
 
-        // 设置响应头
-        foreach ($psr7Response->getHeaders() as $name => $values) {
-            $swooleResponse->header((string) $name, implode(', ', $values));
+        // 构建运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($psr7Response, $runtimeHeaders);
+
+        // 设置去重后的响应头
+        foreach ($finalHeaders as $name => $value) {
+            $swooleResponse->header((string) $name, (string) $value);
         }
 
         // 发送响应体
@@ -897,10 +903,21 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
         $config = array_merge($this->defaultConfig, $this->config);
         $corsConfig = $config['middleware']['cors'];
 
-        $response->header('Access-Control-Allow-Origin', $corsConfig['allow_origin'] ?? '*');
-        $response->header('Access-Control-Allow-Methods', $corsConfig['allow_methods'] ?? 'GET, POST, PUT, DELETE, OPTIONS');
-        $response->header('Access-Control-Allow-Headers', $corsConfig['allow_headers'] ?? 'Content-Type, Authorization, X-Requested-With');
-        $response->header('Access-Control-Allow-Credentials', 'true');
+        // 构建CORS头部数组，稍后通过头部去重服务处理
+        $corsHeaders = [
+            'Access-Control-Allow-Origin' => $corsConfig['allow_origin'] ?? '*',
+            'Access-Control-Allow-Methods' => $corsConfig['allow_methods'] ?? 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers' => $corsConfig['allow_headers'] ?? 'Content-Type, Authorization, X-Requested-With',
+            'Access-Control-Allow-Credentials' => 'true',
+        ];
+
+        // 去重CORS头部
+        $finalHeaders = $this->headerService->deduplicateHeaders($corsHeaders);
+
+        // 设置去重后的头部
+        foreach ($finalHeaders as $name => $value) {
+            $response->header($name, $value);
+        }
 
         // 处理 OPTIONS 预检请求
         if ($request->server['request_method'] === 'OPTIONS') {

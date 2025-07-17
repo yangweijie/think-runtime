@@ -17,7 +17,7 @@ test('has correct priority', function () {
     $adapter = new RippleAdapter($this->app, []);
     
     $priority = $adapter->getPriority();
-    expect($priority)->toBe(91);
+    expect($priority)->toBe(80);
 });
 
 test('can get and set config', function () {
@@ -302,4 +302,136 @@ test('can create multiple coroutines', function () {
     }
 
     expect(count($results))->toBe(5);
+});
+// Header deduplication integration tests
+test('ripple adapter uses header deduplication service', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    // Verify the adapter has access to header deduplication service
+    expect(method_exists($adapter, 'processResponseHeaders'))->toBe(true);
+    expect(method_exists($adapter, 'getHeaderService'))->toBe(true);
+
+    // Test that the header service is properly initialized
+    $headerService = $adapter->getHeaderService();
+    expect($headerService)->not->toBeNull();
+    expect($headerService)->toBeInstanceOf(\yangweijie\thinkRuntime\contract\HeaderDeduplicationInterface::class);
+});
+
+test('ripple adapter handles response headers without duplication', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    // Create PSR-7 response with headers that might be duplicated
+    $psrResponse = $this->createPsr7Response(200, [
+        'Content-Type' => 'application/json',
+        'Content-Length' => '40',
+        'X-Custom-Header' => 'ripple-test',
+        'Cache-Control' => 'max-age=3600'
+    ], '{"message": "Ripple response test"}');
+
+    // Test that processResponseHeaders method works correctly
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    expect($finalHeaders)->toBeArray();
+
+    // Count occurrences of each header (case-insensitive)
+    $headerCounts = [];
+    foreach ($finalHeaders as $name => $value) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    // Each header should appear only once
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['content-length'])->toBe(1);
+    expect($headerCounts['x-custom-header'])->toBe(1);
+    expect($headerCounts['cache-control'])->toBe(1);
+});
+
+test('ripple adapter handles setResponseHeaders method correctly', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    // Create PSR-7 response with mixed case headers
+    $psrResponse = $this->createPsr7Response(200, [
+        'content-type' => 'application/json',
+        'Content-Type' => 'text/html', // Should be deduplicated
+        'X-Ripple-Header' => 'value1',
+        'x-ripple-header' => 'value2' // Should be deduplicated
+    ], '{"test": "ripple"}');
+
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    // Count occurrences of each header (case-insensitive)
+    $headerCounts = [];
+    foreach ($finalHeaders as $name => $value) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    // Each header should appear only once after deduplication
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['x-ripple-header'])->toBe(1);
+});
+
+test('ripple adapter handles compression headers without duplication', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    // Create PSR-7 response with compression headers
+    $psrResponse = $this->createPsr7Response(200, [
+        'Content-Type' => 'text/html',
+        'Content-Encoding' => 'gzip',
+        'Content-Length' => '150',
+        'Vary' => 'Accept-Encoding'
+    ], str_repeat('Ripple compressed content ', 8));
+
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    // Verify no duplicate headers
+    $headerCounts = [];
+    foreach ($finalHeaders as $name => $value) {
+        $normalizedName = strtolower($name);
+        $headerCounts[$normalizedName] = ($headerCounts[$normalizedName] ?? 0) + 1;
+    }
+
+    expect($headerCounts['content-type'])->toBe(1);
+    expect($headerCounts['content-encoding'])->toBe(1);
+    expect($headerCounts['content-length'])->toBe(1);
+    expect($headerCounts['vary'])->toBe(1);
+});
+
+test('ripple adapter preserves cors headers', function () {
+    $this->createApplication();
+    $adapter = new RippleAdapter($this->app, []);
+
+    // Create PSR-7 response with CORS headers
+    $psrResponse = $this->createPsr7Response(200, [
+        'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE',
+        'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
+        'Access-Control-Max-Age' => '86400'
+    ], 'CORS enabled Ripple response');
+
+    $finalHeaders = $adapter->processResponseHeaders($psrResponse);
+
+    // Verify all CORS headers are preserved
+    $expectedHeaders = [
+        'access-control-allow-origin',
+        'access-control-allow-methods',
+        'access-control-allow-headers',
+        'access-control-max-age'
+    ];
+
+    foreach ($expectedHeaders as $expectedHeader) {
+        $found = false;
+        foreach ($finalHeaders as $name => $value) {
+            if (strtolower($name) === $expectedHeader) {
+                $found = true;
+                break;
+            }
+        }
+        expect($found)->toBe(true, "CORS header {$expectedHeader} should be preserved");
+    }
 });

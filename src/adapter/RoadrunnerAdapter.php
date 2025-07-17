@@ -128,8 +128,11 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
                     // 处理请求
                     $response = $this->handleRequest($request);
 
+                    // 处理响应头部去重
+                    $processedResponse = $this->processRoadRunnerResponseHeaders($response);
+
                     // 发送响应
-                    $this->psr7Worker->respond($response);
+                    $this->psr7Worker->respond($processedResponse);
                 } finally {
                     // 恢复原应用实例
                     $this->app = $originalApp;
@@ -252,7 +255,43 @@ class RoadrunnerAdapter extends AbstractRuntime implements AdapterInterface
      */
     public function handleRoadRunnerRequest(ServerRequestInterface $request): ResponseInterface
     {
-        return $this->handleRequest($request);
+        $response = $this->handleRequest($request);
+        
+        // 处理响应头部去重
+        return $this->processRoadRunnerResponseHeaders($response);
+    }
+
+    /**
+     * 处理RoadRunner响应头部
+     * 使用头部去重服务处理响应头部，防止重复
+     *
+     * @param ResponseInterface $response PSR-7响应对象
+     * @return ResponseInterface 处理后的PSR-7响应对象
+     */
+    protected function processRoadRunnerResponseHeaders(ResponseInterface $response): ResponseInterface
+    {
+        // 构建RoadRunner运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+        
+        // 添加RoadRunner特定头部
+        $runtimeHeaders['X-Powered-By'] = 'RoadRunner/ThinkPHP-Runtime';
+        $runtimeHeaders['X-Runtime'] = 'RoadRunner';
+        
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+        
+        // 创建新的响应对象，先移除所有现有头部
+        $newResponse = $response;
+        foreach ($response->getHeaders() as $name => $values) {
+            $newResponse = $newResponse->withoutHeader($name);
+        }
+        
+        // 添加去重后的头部
+        foreach ($finalHeaders as $name => $value) {
+            $newResponse = $newResponse->withHeader($name, $value);
+        }
+        
+        return $newResponse;
     }
 
     /**

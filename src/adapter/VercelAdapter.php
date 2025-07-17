@@ -414,32 +414,84 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
         // 设置状态码
         http_response_code($response->getStatusCode());
 
-        // 设置响应头
-        foreach ($response->getHeaders() as $name => $values) {
-            foreach ($values as $value) {
-                header($name . ': ' . $value, false);
-            }
-        }
+        // 构建运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
 
         // 添加CORS头（如果启用）
         if ($config['http']['enable_cors']) {
-            header('Access-Control-Allow-Origin: ' . $config['http']['cors_origin']);
-            header('Access-Control-Allow-Methods: ' . $config['http']['cors_methods']);
-            header('Access-Control-Allow-Headers: ' . $config['http']['cors_headers']);
-            header('Access-Control-Allow-Credentials: true');
+            $runtimeHeaders['Access-Control-Allow-Origin'] = $config['http']['cors_origin'];
+            $runtimeHeaders['Access-Control-Allow-Methods'] = $config['http']['cors_methods'];
+            $runtimeHeaders['Access-Control-Allow-Headers'] = $config['http']['cors_headers'];
+            $runtimeHeaders['Access-Control-Allow-Credentials'] = 'true';
         }
 
         // 添加Vercel特定的头信息
         if ($this->isVercelEnvironment) {
-            header('X-Powered-By: ThinkPHP-Vercel-Runtime');
+            $runtimeHeaders['X-Powered-By'] = 'Vercel/ThinkPHP-Runtime';
 
             if (!empty($_ENV['VERCEL_REGION'])) {
-                header('X-Vercel-Region: ' . $_ENV['VERCEL_REGION']);
+                $runtimeHeaders['X-Vercel-Region'] = $_ENV['VERCEL_REGION'];
             }
+        }
+
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+
+        // 发送去重后的响应头
+        foreach ($finalHeaders as $name => $value) {
+            header($name . ': ' . $value, false);
         }
 
         // 输出响应体
         echo $response->getBody();
+    }
+
+    /**
+     * 处理Vercel响应头部
+     * 使用头部去重服务处理响应头部，防止重复
+     *
+     * @param ResponseInterface $response PSR-7响应对象
+     * @return ResponseInterface 处理后的PSR-7响应对象
+     */
+    protected function processVercelResponseHeaders(ResponseInterface $response): ResponseInterface
+    {
+        $config = array_merge($this->defaultConfig, $this->config);
+        
+        // 构建Vercel运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+        
+        // 添加CORS头（如果启用）
+        if ($config['http']['enable_cors']) {
+            $runtimeHeaders['Access-Control-Allow-Origin'] = $config['http']['cors_origin'];
+            $runtimeHeaders['Access-Control-Allow-Methods'] = $config['http']['cors_methods'];
+            $runtimeHeaders['Access-Control-Allow-Headers'] = $config['http']['cors_headers'];
+            $runtimeHeaders['Access-Control-Allow-Credentials'] = 'true';
+        }
+        
+        // 添加Vercel特定的头信息
+        if ($this->isVercelEnvironment) {
+            $runtimeHeaders['X-Powered-By'] = 'Vercel/ThinkPHP-Runtime';
+            
+            if (!empty($_ENV['VERCEL_REGION'])) {
+                $runtimeHeaders['X-Vercel-Region'] = $_ENV['VERCEL_REGION'];
+            }
+        }
+        
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+        
+        // 创建新的响应对象，先移除所有现有头部
+        $newResponse = $response;
+        foreach ($response->getHeaders() as $name => $values) {
+            $newResponse = $newResponse->withoutHeader($name);
+        }
+        
+        // 添加去重后的头部
+        foreach ($finalHeaders as $name => $value) {
+            $newResponse = $newResponse->withHeader($name, $value);
+        }
+        
+        return $newResponse;
     }
 
     /**

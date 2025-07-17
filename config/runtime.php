@@ -324,4 +324,42 @@ return [
         'memory_limit' => '256M',
         'max_execution_time' => 30,
     ],
+
+    // HTTP头部去重配置
+    // 解决重复头部问题，确保HTTP/1.1规范兼容性
+    'header_deduplication' => [
+        // 基础设置
+        'enabled' => true,                      // 启用头部去重功能
+        'debug_logging' => false,               // 启用调试日志（开发环境建议启用）
+        'strict_mode' => false,                 // 严格模式 - 在冲突时抛出异常（生产环境建议关闭）
+        
+        // 日志配置
+        'log_critical_conflicts' => true,       // 记录严重冲突的警告日志
+        'log_level' => 'info',                  // 日志级别: debug, info, warning, error
+        'log_file' => 'runtime/logs/header_deduplication.log', // 专用日志文件
+        
+        // 错误处理
+        'throw_on_merge_failure' => false,      // 合并失败时抛出异常（生产环境建议关闭）
+        
+        // 头部处理选项
+        'preserve_original_case' => false,      // 保留原始头部名称大小写
+        'max_header_value_length' => 8192,      // 头部值最大长度（字节）
+        
+        // 性能优化
+        'enable_performance_logging' => false,  // 启用性能日志记录（生产环境建议关闭）
+        'enable_header_name_cache' => true,     // 启用头部名称缓存
+        'max_cache_size' => 1000,              // 最大缓存条目数
+        'enable_batch_processing' => true,      // 启用批量处理优化
+        
+        // 自定义规则（可选）
+        'custom_rules' => [
+            // 示例：API版本头部
+            // 'X-API-Version' => [
+            //     'priority' => 'psr7_first',    // 优先级: psr7_first, runtime_first, combine
+            //     'combinable' => false,          // 是否可合并
+            //     'separator' => ', ',            // 合并分隔符
+            //     'critical' => true,             // 是否为关键头部
+            // ],
+        ],
+    ],
 ];

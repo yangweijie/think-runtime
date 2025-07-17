@@ -17,6 +17,9 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response as Psr7Response;
 use Throwable;
 use yangweijie\thinkRuntime\contract\RuntimeInterface;
+use yangweijie\thinkRuntime\contract\HeaderDeduplicationInterface;
+use yangweijie\thinkRuntime\service\HeaderDeduplicationService;
+use yangweijie\thinkRuntime\concerns\ModifyProperty;
 
 /**
  * 抽象运行时基类
@@ -24,6 +27,7 @@ use yangweijie\thinkRuntime\contract\RuntimeInterface;
  */
 abstract class AbstractRuntime implements RuntimeInterface
 {
+    use ModifyProperty;
     /**
      * ThinkPHP应用实例
      *
@@ -46,6 +50,13 @@ abstract class AbstractRuntime implements RuntimeInterface
     protected Psr17Factory $psr17Factory;
 
     /**
+     * 头部去重服务
+     *
+     * @var HeaderDeduplicationInterface
+     */
+    protected HeaderDeduplicationInterface $headerService;
+
+    /**
      * 构造函数
      *
      * @param array $config 配置数组
@@ -55,6 +66,12 @@ abstract class AbstractRuntime implements RuntimeInterface
         $this->app = $app;
         $this->config = $config;
         $this->psr17Factory = new Psr17Factory();
+        $this->headerService = new HeaderDeduplicationService();
+        
+        // 根据配置设置调试模式
+        if (isset($config['header_deduplication']['debug_logging']) && $config['header_deduplication']['debug_logging']) {
+            $this->headerService->setDebugMode(true);
+        }
     }
 
     /**
@@ -221,5 +238,136 @@ abstract class AbstractRuntime implements RuntimeInterface
         ], JSON_UNESCAPED_UNICODE);
 
         return new Psr7Response(500, ['Content-Type' => 'application/json'], $content);
+    }
+
+    /**
+     * 处理响应头部，合并PSR-7响应头部和运行时头部
+     *
+     * @param ResponseInterface $psrResponse PSR-7响应对象
+     * @param array $runtimeHeaders 运行时特定的头部
+     * @return array 处理后的头部数组
+     */
+    protected function processResponseHeaders(ResponseInterface $psrResponse, array $runtimeHeaders = []): array
+    {
+        // 获取PSR-7响应头部
+        $psrHeaders = [];
+        foreach ($psrResponse->getHeaders() as $name => $values) {
+            $psrHeaders[$name] = is_array($values) ? implode(', ', $values) : $values;
+        }
+
+        // 合并头部，PSR-7头部优先
+        $mergedHeaders = $this->headerService->mergeHeaders($psrHeaders, $runtimeHeaders);
+
+        // 去重处理
+        return $this->headerService->deduplicateHeaders($mergedHeaders);
+    }
+
+    /**
+     * 判断运行时是否应该跳过设置某个头部
+     *
+     * @param string $headerName 头部名称
+     * @param array $psrHeaders PSR-7响应头部
+     * @return bool 是否应该跳过
+     */
+    protected function shouldSkipRuntimeHeader(string $headerName, array $psrHeaders): bool
+    {
+        $normalizedName = $this->headerService->normalizeHeaderName($headerName);
+        
+        // 检查PSR-7响应中是否已存在该头部
+        foreach ($psrHeaders as $name => $value) {
+            if ($this->headerService->normalizeHeaderName($name) === $normalizedName) {
+                // 对于唯一头部，如果PSR-7响应中已存在，则跳过运行时设置
+                if ($this->headerService->isUniqueHeader($normalizedName)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 构建运行时特定的头部
+     * 子类可以重写此方法来添加特定的头部
+     *
+     * @param mixed $request 请求对象（可能是不同运行时的请求类型）
+     * @return array 运行时头部数组
+     */
+    protected function buildRuntimeHeaders($request = null): array
+    {
+        $headers = [];
+
+        // 添加基本的运行时头部
+        $headers['Server'] = $this->getName() . '/1.0';
+        $headers['X-Powered-By'] = 'ThinkPHP Runtime';
+
+        return $headers;
+    }
+
+    /**
+     * 获取头部去重服务实例
+     *
+     * @return HeaderDeduplicationInterface
+     */
+    protected function getHeaderService(): HeaderDeduplicationInterface
+    {
+        return $this->headerService;
+    }
+
+    /**
+     * 设置头部去重服务实例
+     *
+     * @param HeaderDeduplicationInterface $service 头部去重服务
+     * @return void
+     */
+    public function setHeaderService(HeaderDeduplicationInterface $service): void
+    {
+        $this->headerService = $service;
+    }
+
+    /**
+     * 启用或禁用头部调试模式
+     *
+     * @param bool $enabled 是否启用
+     * @return void
+     */
+    public function setHeaderDebugMode(bool $enabled): void
+    {
+        $this->headerService->setDebugMode($enabled);
+    }
+
+    /**
+     * 检查头部冲突
+     *
+     * @param ResponseInterface $psrResponse PSR-7响应
+     * @param array $runtimeHeaders 运行时头部
+     * @return array 冲突的头部列表
+     */
+    protected function detectResponseHeaderConflicts(ResponseInterface $psrResponse, array $runtimeHeaders): array
+    {
+        $psrHeaders = [];
+        foreach ($psrResponse->getHeaders() as $name => $values) {
+            $psrHeaders[$name] = is_array($values) ? implode(', ', $values) : $values;
+        }
+
+        return $this->headerService->detectHeaderConflicts($psrHeaders, $runtimeHeaders);
+    }
+
+    /**
+     * 获取公共路径
+     * 用于静态文件处理等
+     *
+     * @return string 公共路径
+     */
+    protected function getPublicPath(): string
+    {
+        $publicPath = getcwd() . '/public';
+        
+        // 如果public目录不存在，使用当前目录
+        if (!is_dir($publicPath)) {
+            $publicPath = getcwd();
+        }
+
+        return $publicPath;
     }
 }

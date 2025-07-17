@@ -545,6 +545,39 @@ class FrankenphpAdapter extends AbstractRuntime implements AdapterInterface
     }
 
     /**
+     * 处理FrankenPHP响应头部
+     * 使用头部去重服务处理响应头部，防止重复
+     *
+     * @param ResponseInterface $response PSR-7响应对象
+     * @return ResponseInterface 处理后的PSR-7响应对象
+     */
+    protected function processFrankenPHPResponseHeaders(ResponseInterface $response): ResponseInterface
+    {
+        // 构建FrankenPHP运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+        
+        // 添加FrankenPHP特定头部
+        $runtimeHeaders['X-Powered-By'] = 'FrankenPHP/ThinkPHP-Runtime';
+        $runtimeHeaders['X-Runtime'] = 'FrankenPHP';
+        
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+        
+        // 创建新的响应对象，先移除所有现有头部
+        $newResponse = $response;
+        foreach ($response->getHeaders() as $name => $values) {
+            $newResponse = $newResponse->withoutHeader($name);
+        }
+        
+        // 添加去重后的头部
+        foreach ($finalHeaders as $name => $value) {
+            $newResponse = $newResponse->withHeader($name, $value);
+        }
+        
+        return $newResponse;
+    }
+
+    /**
      * 创建PHP配置文件
      *
      * @return string PHP配置文件路径
@@ -1150,11 +1183,15 @@ function parseMemoryLimit($limit) {
         // 发送状态码
         http_response_code($response->getStatusCode());
 
-        // 发送响应头
-        foreach ($response->getHeaders() as $name => $values) {
-            foreach ($values as $value) {
-                header(sprintf('%s: %s', $name, $value), false);
-            }
+        // 构建运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+
+        // 发送去重后的响应头
+        foreach ($finalHeaders as $name => $value) {
+            header(sprintf('%s: %s', $name, $value), false);
         }
 
         // 发送响应体

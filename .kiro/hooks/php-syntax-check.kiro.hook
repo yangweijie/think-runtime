@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "PHP Syntax & Format Monitor",
+  "description": "Monitors all files in the workspace and when changes are detected, checks PHP files for syntax errors and formatting issues, exclude  vendor dir.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Files have been modified. Please check all PHP files (*.php) in the workspace (exclude  vendor dir) for syntax errors using `php -l` command and check for formatting issues. Report any syntax errors found and suggest fixes. Also check if the PHP code follows PSR standards for formatting and suggest improvements if needed."
+  }
+}

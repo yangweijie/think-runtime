@@ -40,8 +40,8 @@ class RuntimeConfig
             'swoole' => [
                 'host' => '0.0.0.0',
                 'port' => 9501,
-                'mode' => SWOOLE_PROCESS??2,
-                'sock_type' => SWOOLE_SOCK_TCP??1,
+                'mode' => 2, // SWOOLE_PROCESS
+                'sock_type' => 1, // SWOOLE_SOCK_TCP
                 'settings' => [
                     'worker_num' => 4,
                     'task_worker_num' => 2,
@@ -104,7 +104,7 @@ class RuntimeConfig
                     'verify_peer' => false,
                 ],
                 'max_request' => 10000,
-                'max_package_size' => 10 * 1024 * 1024,
+                'max_package_size' => 10485760, // 10 * 1024 * 1024
                 'enable_static_handler' => true,
                 'document_root' => 'public',
                 'enable_coroutine' => true,
@@ -222,7 +222,7 @@ class RuntimeConfig
                 'error' => [
                     'display_errors' => false,
                     'log_errors' => true,
-                    'error_reporting' => E_ALL & ~E_NOTICE,
+                    'error_reporting' => 32759, // E_ALL & ~E_NOTICE
                 ],
 
                 // 调试配置
@@ -267,3 +267,5 @@ class RuntimeConfig
                     'graceful_stop_timeout' => 30, // 优雅停止超时时间
                 ],
             ],
+        ],
+    ];}

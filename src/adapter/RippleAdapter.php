@@ -2376,33 +2376,43 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
         }
         
         try {
-            // 获取响应头
-            $headers = [];
+            // 获取ThinkPHP响应头
+            $thinkHeaders = [];
             if (method_exists($thinkResponse, 'getHeader')) {
-                $headers = $thinkResponse->getHeader();
+                $thinkHeaders = $thinkResponse->getHeader();
             }
             
             // 确保 headers 是数组
-            if (!is_array($headers)) {
-                $headers = [];
+            if (!is_array($thinkHeaders)) {
+                $thinkHeaders = [];
             }
             
             // 设置默认的 Content-Type 如果未设置
-            if (empty($headers['Content-Type']) && empty($headers['content-type'])) {
-                $headers['Content-Type'] = 'text/html; charset=utf-8';
+            if (empty($thinkHeaders['Content-Type']) && empty($thinkHeaders['content-type'])) {
+                $thinkHeaders['Content-Type'] = 'text/html; charset=utf-8';
             }
+
+            // 构建运行时头部
+            $runtimeHeaders = $this->buildRuntimeHeaders();
             
-            // 设置响应头
-            foreach ($headers as $name => $value) {
+            // 添加Ripple特定头部
+            $runtimeHeaders['X-Powered-By'] = 'Ripple/ThinkPHP-Runtime';
+            $runtimeHeaders['X-Runtime'] = 'Ripple';
+
+            // 创建临时PSR-7响应对象用于头部处理
+            $tempPsr7Response = new \Nyholm\Psr7\Response(200, $thinkHeaders);
+            
+            // 使用统一的头部去重服务处理所有头部
+            $finalHeaders = $this->processResponseHeaders($tempPsr7Response, $runtimeHeaders);
+            
+            // 设置去重后的响应头
+            foreach ($finalHeaders as $name => $value) {
                 if (is_string($name) && (is_string($value) || is_array($value))) {
                     // 确保头名称是有效的
                     $name = trim($name);
                     if (empty($name)) {
                         continue;
                     }
-                    
-                    // 标准化头名称（首字母大写，其他小写）
-                    $name = str_replace(' ', '-', ucwords(str_replace('-', ' ', $name)));
                     
                     // 如果值是数组，用逗号连接
                     if (is_array($value)) {
@@ -2412,11 +2422,6 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
                     // 使用 withHeader 方法并获取新的响应实例
                     $rippleResponse = $rippleResponse->withHeader($name, $value);
                 }
-            }
-            
-            // 设置默认的 Server 头如果未设置
-            if (!$rippleResponse->hasHeader('Server')) {
-                $rippleResponse = $rippleResponse->withHeader('Server', 'Ripple/1.0');
             }
             
             return $rippleResponse;

@@ -394,11 +394,17 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
                 // 处理请求
                 $response = $this->handleRequest($request);
 
+                // 构建运行时头部
+                $runtimeHeaders = $this->buildRuntimeHeaders($request);
+
+                // 使用头部去重服务处理所有头部
+                $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
+
                 // 返回ReactPHP Response
                 return resolve(
                     new Response(
                         $response->getStatusCode(),
-                        $response->getHeaders(),
+                        $finalHeaders,
                         (string) $response->getBody()
                     )
                 );
@@ -438,13 +444,38 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
         foreach ($uploadedFiles as $name => $uploadedFile) {
             if ($uploadedFile instanceof \Psr\Http\Message\UploadedFileInterface) {
                 try {
+                    // 检查上传文件是否有错误
+                    $uploadError = $uploadedFile->getError();
+                    if ($uploadError !== UPLOAD_ERR_OK) {
+                        $files[$name] = [
+                            'name' => $uploadedFile->getClientFilename() ?? '',
+                            'type' => $uploadedFile->getClientMediaType() ?? '',
+                            'size' => $uploadedFile->getSize() ?? 0,
+                            'tmp_name' => '',
+                            'error' => $uploadError,
+                        ];
+                        continue;
+                    }
+
                     // 创建临时文件
                     $tmpName = tempnam(sys_get_temp_dir(), 'reactphp_upload_');
+                    if ($tmpName === false) {
+                        throw new \RuntimeException('Failed to create temporary file');
+                    }
 
                     // 将上传内容写入临时文件
                     $stream = $uploadedFile->getStream();
-                    $stream->rewind(); // 确保从头开始读取
-                    file_put_contents($tmpName, $stream->getContents());
+                    if ($stream->isSeekable()) {
+                        $stream->rewind(); // 确保从头开始读取
+                    }
+                    
+                    $content = $stream->getContents();
+                    $bytesWritten = file_put_contents($tmpName, $content);
+                    
+                    if ($bytesWritten === false) {
+                        @unlink($tmpName); // 清理失败的临时文件
+                        throw new \RuntimeException('Failed to write uploaded file content');
+                    }
 
                     // 记录临时文件路径，用于后续清理
                     $tempFiles[] = $tmpName;
@@ -453,23 +484,32 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
                     $files[$name] = [
                         'name' => $uploadedFile->getClientFilename() ?? '',
                         'type' => $uploadedFile->getClientMediaType() ?? '',
-                        'size' => $uploadedFile->getSize() ?? 0,
+                        'size' => $uploadedFile->getSize() ?? strlen($content),
                         'tmp_name' => $tmpName,
-                        'error' => $uploadedFile->getError() ?? UPLOAD_ERR_OK,
+                        'error' => UPLOAD_ERR_OK,
                     ];
                 } catch (\Throwable $e) {
+                    // 记录错误但不中断请求处理
+                    error_log("ReactPHP: Failed to process uploaded file '{$name}': " . $e->getMessage());
+                    
                     // 如果处理失败，设置错误状态
                     $files[$name] = [
                         'name' => $uploadedFile->getClientFilename() ?? '',
-                        'type' => '',
-                        'size' => 0,
+                        'type' => $uploadedFile->getClientMediaType() ?? '',
+                        'size' => $uploadedFile->getSize() ?? 0,
                         'tmp_name' => '',
                         'error' => UPLOAD_ERR_CANT_WRITE,
                     ];
                 }
             } elseif (is_array($uploadedFile)) {
                 // 处理多文件上传的情况
-                $files[$name] = $this->convertUploadedFiles($uploadedFile);
+                try {
+                    $files[$name] = $this->convertUploadedFiles($uploadedFile);
+                } catch (\Throwable $e) {
+                    // 记录错误但不中断请求处理
+                    error_log("ReactPHP: Failed to process uploaded file array '{$name}': " . $e->getMessage());
+                    $files[$name] = [];
+                }
             }
         }
 
@@ -518,9 +558,22 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
             'line' => $e->getLine(),
         ], JSON_UNESCAPED_UNICODE);
 
+        // 构建错误响应的头部
+        $errorHeaders = [
+            'Content-Type' => 'application/json',
+            'Content-Length' => (string) strlen($content),
+        ];
+
+        // 构建运行时头部
+        $runtimeHeaders = $this->buildRuntimeHeaders();
+
+        // 使用头部去重服务处理所有头部
+        $finalHeaders = $this->headerService->mergeHeaders($errorHeaders, $runtimeHeaders);
+        $finalHeaders = $this->headerService->deduplicateHeaders($finalHeaders);
+
         return new Response(
             500,
-            ['Content-Type' => 'application/json'],
+            $finalHeaders,
             $content
         );
     }
@@ -696,6 +749,32 @@ class ReactphpAdapter extends AbstractRuntime implements AdapterInterface
             // 忽略销毁过程中的错误
             error_log("ReactPHP: Error destroying app instance: " . $e->getMessage());
         }
+    }
+
+    /**
+     * 构建运行时特定的头部
+     *
+     * @param mixed $request 请求对象
+     * @return array 运行时头部数组
+     */
+    protected function buildRuntimeHeaders($request = null): array
+    {
+        $headers = parent::buildRuntimeHeaders($request);
+        
+        // 添加ReactPHP特定的头部
+        $headers['Server'] = 'ReactPHP/1.0';
+        $headers['X-Powered-By'] = 'ThinkPHP Runtime (ReactPHP)';
+        
+        // 添加连接相关头部
+        $config = array_merge($this->defaultConfig, $this->config);
+        if ($config['enable_keepalive'] ?? true) {
+            $headers['Connection'] = 'keep-alive';
+            $headers['Keep-Alive'] = 'timeout=' . ($config['keepalive_timeout'] ?? 5);
+        } else {
+            $headers['Connection'] = 'close';
+        }
+        
+        return $headers;
     }
 
     /**
