@@ -437,9 +437,11 @@ class VercelAdapter extends AbstractRuntime implements AdapterInterface
         // 使用头部去重服务处理所有头部
         $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
 
-        // 发送去重后的响应头
+        // 发送去重后的响应头（多值头部如 Set-Cookie 需逐行追加）
         foreach ($finalHeaders as $name => $value) {
-            header($name . ': ' . $value, false);
+            foreach ((array) $value as $item) {
+                header($name . ': ' . $item, false);
+            }
         }
 
         // 输出响应体

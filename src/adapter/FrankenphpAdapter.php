@@ -1189,9 +1189,17 @@ function parseMemoryLimit($limit) {
         // 使用头部去重服务处理所有头部
         $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
 
-        // 发送去重后的响应头
-        foreach ($finalHeaders as $name => $value) {
+        // 发送去重后的响应头（多值头部如 Set-Cookie 需逐行追加）
+        [$singleHeaders, $multiHeaders] = $this->splitMultiValueHeaders($finalHeaders);
+
+        foreach ($singleHeaders as $name => $value) {
             header(sprintf('%s: %s', $name, $value), false);
+        }
+
+        foreach ($multiHeaders as $name => $values) {
+            foreach ($values as $value) {
+                header(sprintf('%s: %s', $name, $value), false);
+            }
         }
 
         // 发送响应体

@@ -568,11 +568,18 @@ class BrefAdapter extends AbstractRuntime implements AdapterInterface
         // 使用头部去重服务处理所有头部
         $finalHeaders = $this->processResponseHeaders($response, $runtimeHeaders);
 
+        // Lambda 响应中多值头部（如 Set-Cookie）需使用 multiValueHeaders 字段
+        [$singleHeaders, $multiHeaders] = $this->splitMultiValueHeaders($finalHeaders);
+
         $lambdaResponse = [
             'statusCode' => $response->getStatusCode(),
-            'headers' => $finalHeaders,
-            'body' => (string) $response->getBody(),
+            'headers'    => $singleHeaders,
+            'body'       => (string) $response->getBody(),
         ];
+
+        if (! empty($multiHeaders)) {
+            $lambdaResponse['multiValueHeaders'] = $multiHeaders;
+        }
 
         return $lambdaResponse;
     }

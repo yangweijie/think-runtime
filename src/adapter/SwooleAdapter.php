@@ -810,7 +810,16 @@ class SwooleAdapter extends AbstractRuntime implements AdapterInterface
 
         // 设置去重后的响应头
         foreach ($finalHeaders as $name => $value) {
-            $swooleResponse->header((string) $name, (string) $value);
+            if (is_array($value)) {
+                // 多值头部（如 Set-Cookie）需一次性传入数组，Swoole 会展开为多行同名头
+                // 逐个调用 header() 会互相覆盖，最终只剩最后一条
+                $swooleResponse->header(
+                    (string) $name,
+                    array_values(array_map(static fn($item): string => (string) $item, $value))
+                );
+            } else {
+                $swooleResponse->header((string) $name, (string) $value);
+            }
         }
 
         // 发送响应体

@@ -206,6 +206,16 @@ class HeaderDeduplicationService implements HeaderDeduplicationInterface
     ];
 
     /**
+     * 多值头部列表
+     * 这类头部可以在响应中出现多次，必须保留为数组，不能合并成单个字符串
+     *
+     * @var array
+     */
+    protected const MULTI_VALUE_HEADERS = [
+        'Set-Cookie',
+    ];
+
+    /**
      * 去重HTTP头部数组
      *
      * @param array $headers 原始头部数组
@@ -258,6 +268,15 @@ class HeaderDeduplicationService implements HeaderDeduplicationInterface
                         } catch (\Exception $e) {
                             $this->handleMergeFailure($normalizedName, [$normalized[$normalizedName], $value], $e->getMessage());
                         }
+                    } elseif ($this->isMultiValueHeader($normalizedName)) {
+                        // 多值头部：保留全部取值，输出为数组（如多个 Set-Cookie）
+                        $existingValues = is_array($normalized[$normalizedName])
+                            ? $normalized[$normalizedName]
+                            : [$normalized[$normalizedName]];
+                        $newValues = is_array($value) ? array_values($value) : [$value];
+                        $normalized[$normalizedName] = array_values(array_unique(array_merge($existingValues, $newValues)));
+
+                        $this->logDebug("Kept all values of multi-value header '{$normalizedName}'");
                     } else {
                         // 对于唯一头部，保留第一个值（或根据优先级规则）
                         $this->logHeaderConflict($normalizedName, $normalized[$normalizedName], $value, 'keep_existing');
@@ -378,6 +397,15 @@ class HeaderDeduplicationService implements HeaderDeduplicationInterface
                             // 在失败时使用主要头部的值
                             $merged[$normalizedName] = $value;
                         }
+                    } elseif ($this->isMultiValueHeader($normalizedName)) {
+                        // 多值头部：主次双方的值都保留（如多个 Set-Cookie）
+                        $existingValues = is_array($merged[$normalizedName])
+                            ? $merged[$normalizedName]
+                            : [$merged[$normalizedName]];
+                        $newValues = is_array($value) ? array_values($value) : [$value];
+                        $merged[$normalizedName] = array_values(array_unique(array_merge($existingValues, $newValues)));
+
+                        $this->logDebug("Kept all values of multi-value header '{$normalizedName}'");
                     } else {
                         // 主要头部优先
                         $this->logHeaderConflict($normalizedName, $merged[$normalizedName], $value, 'primary_override');
@@ -468,6 +496,18 @@ class HeaderDeduplicationService implements HeaderDeduplicationInterface
     }
 
     /**
+     * 判断头部是否为多值头部
+     * 多值头部可以在响应中重复出现，需保留为数组而非合并成单个值
+     *
+     * @param string $name 头部名称
+     * @return bool 是否为多值头部
+     */
+    public function isMultiValueHeader(string $name): bool
+    {
+        return in_array($name, self::MULTI_VALUE_HEADERS, true);
+    }
+
+    /**
      * 合并头部值
      *
      * @param string $name 头部名称
@@ -494,7 +534,7 @@ class HeaderDeduplicationService implements HeaderDeduplicationInterface
                 
             case 'Set-Cookie':
                 // Set-Cookie不应该合并，应该作为多个头部发送
-                // 但在这里我们返回第一个值
+                // 多值场景由 isMultiValueHeader() 分支保留为数组处理，此处仅作兜底
                 return $uniqueValues[0] ?? '';
                 
             default:

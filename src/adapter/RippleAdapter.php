@@ -2414,8 +2414,9 @@ class RippleAdapter extends AbstractRuntime implements AdapterInterface
                         continue;
                     }
                     
-                    // 如果值是数组，用逗号连接
-                    if (is_array($value)) {
+                    // 多值头部（如 Set-Cookie）保持数组，由 PSR-7 输出为多行同名头
+                    // 其余数组值按逗号连接
+                    if (is_array($value) && ! $this->isMultiValueHeader($name)) {
                         $value = implode(', ', $value);
                     }
                     
